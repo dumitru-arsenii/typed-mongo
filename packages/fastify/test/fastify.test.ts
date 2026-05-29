@@ -1,4 +1,3 @@
-import { TypedMongoNotFoundError } from "@typed-mongo/core";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { describe, expect, it, vi } from "vitest";
 
@@ -31,7 +30,7 @@ describe("@typed-mongo/fastify", () => {
   it("reads an id from params, calls the repository, and attaches the document", async () => {
     const user: User = { _id: "user_1", email: "ada@example.com" };
     const repository = {
-      getById: vi.fn(async () => user),
+      findById: vi.fn(async () => user),
     };
     const preHandler = createGetByIdPreHandler({
       attachTo: "user",
@@ -44,7 +43,7 @@ describe("@typed-mongo/fastify", () => {
 
     await runPreHandler(preHandler, request, reply);
 
-    expect(repository.getById).toHaveBeenCalledWith("user_1");
+    expect(repository.findById).toHaveBeenCalledWith("user_1");
     expect(request.user).toBe(user);
   });
 
@@ -61,9 +60,9 @@ describe("@typed-mongo/fastify", () => {
     const request = { params: { id: "missing" } } as FastifyRequest;
     const reply = createReply();
 
-    await expect(runPreHandler(preHandler, request, reply)).rejects.toBeInstanceOf(
-      TypedMongoNotFoundError,
-    );
+    await expect(runPreHandler(preHandler, request, reply)).rejects.toMatchObject({
+      name: "TypedMongoNotFoundError",
+    });
   });
 
   it("can reply with 404 for missing documents", async () => {
@@ -90,7 +89,7 @@ describe("@typed-mongo/fastify", () => {
   it("propagates repository errors", async () => {
     const error = new Error("database offline");
     const repository = {
-      getById: vi.fn(async () => {
+      findById: vi.fn(async () => {
         throw error;
       }),
     };

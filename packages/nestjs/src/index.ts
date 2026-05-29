@@ -7,35 +7,32 @@ import {
   type PipeTransform,
   type Provider,
 } from "@nestjs/common";
-import {
-  getDocumentById,
-  TypedMongoNotFoundError,
-  type AnyTypedMongoCollection,
-  type TypedMongoGetByIdCapableRepository,
-  type TypedMongoRepository,
-} from "@typed-mongo/core";
+import { type MongoEntity, type Repository } from "@typed-mongo/core";
 
-export type { TypedMongoRepository } from "@typed-mongo/core";
+export type { Repository as TypedMongoRepository } from "@typed-mongo/core";
 
 export const TYPED_MONGO_REPOSITORY_FACTORY = Symbol.for(
   "@typed-mongo/nestjs:repository-factory",
 );
 
-export type TypedMongoRepositoryRecord = Record<string, TypedMongoRepository<any, any>>;
+export type TypedMongoRepositoryRecord = Record<
+  string,
+  Pick<Repository<any>, "findById">
+>;
 
 export type TypedMongoNestRepositoryFactory = (
-  collection: AnyTypedMongoCollection,
-) => Promise<TypedMongoRepository<any, any>> | TypedMongoRepository<any, any>;
+  entity: MongoEntity,
+) => Promise<Pick<Repository<any>, "findById">> | Pick<Repository<any>, "findById">;
 
 export interface TypedMongoRootModuleOptions {
-  collections?: readonly AnyTypedMongoCollection[] | undefined;
+  collections?: readonly MongoEntity[] | undefined;
   global?: boolean | undefined;
   repositories?: TypedMongoRepositoryRecord | undefined;
   repositoryFactory?: TypedMongoNestRepositoryFactory | undefined;
 }
 
 export interface TypedMongoFeatureModuleOptions {
-  collections?: readonly AnyTypedMongoCollection[] | undefined;
+  collections?: readonly MongoEntity[] | undefined;
   repositories?: TypedMongoRepositoryRecord | undefined;
   repositoryFactory?: TypedMongoNestRepositoryFactory | undefined;
 }
@@ -50,9 +47,9 @@ export function InjectTypedMongoRepository(
   return Inject(getTypedMongoRepositoryToken(collectionName));
 }
 
-export function createTypedMongoRepositoryProvider<TDocument, TId = string>(
+export function createTypedMongoRepositoryProvider<TDocument>(
   collectionName: string,
-  repository: TypedMongoRepository<TDocument, TId>,
+  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">,
 ): Provider {
   return {
     provide: getTypedMongoRepositoryToken(collectionName),
@@ -73,7 +70,7 @@ export interface CreateGetByIdPipeOptions<TDocument, TId = string> {
   collectionName?: string;
   mapId?: (value: unknown, metadata: ArgumentMetadata) => TId | Promise<TId>;
   notFoundMessage?: string;
-  repository: TypedMongoGetByIdCapableRepository<TDocument, TId>;
+  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">;
 }
 
 export class TypedMongoGetByIdPipe<TDocument, TId = string> implements PipeTransform<
@@ -83,21 +80,22 @@ export class TypedMongoGetByIdPipe<TDocument, TId = string> implements PipeTrans
   constructor(private readonly options: CreateGetByIdPipeOptions<TDocument, TId>) {}
 
   async transform(value: unknown, metadata: ArgumentMetadata): Promise<TDocument> {
-    try {
-      const id = this.options.mapId
-        ? await this.options.mapId(value, metadata)
-        : (value as TId);
+    const id = this.options.mapId
+      ? await this.options.mapId(value, metadata)
+      : (value as TId);
 
-      return await getDocumentById(this.options.repository, id, {
-        collectionName: this.options.collectionName,
-      });
-    } catch (error) {
-      if (error instanceof TypedMongoNotFoundError) {
-        throw new NotFoundException(this.options.notFoundMessage ?? error.message);
-      }
+    const document = (await this.options.repository.findById(
+      id as Parameters<Repository<any>["findById"]>[0],
+    )) as TDocument | null;
 
-      throw error;
+    if (document === null) {
+      throw new NotFoundException(
+        this.options.notFoundMessage ??
+          createNotFoundMessage(this.options.collectionName, id),
+      );
     }
+
+    return document;
   }
 }
 
@@ -139,10 +137,10 @@ export class TypedMongoModule {
   }
 
   static forFeature(
-    input: readonly AnyTypedMongoCollection[] | TypedMongoFeatureModuleOptions = {},
+    input: readonly MongoEntity[] | TypedMongoFeatureModuleOptions = {},
   ): DynamicModule {
     const options: TypedMongoFeatureModuleOptions = Array.isArray(input)
-      ? { collections: input as readonly AnyTypedMongoCollection[] }
+      ? { collections: input as readonly MongoEntity[] }
       : (input as TypedMongoFeatureModuleOptions);
     const repositoryProviders = [
       ...createProvidersFromRepositoryRecord(options.repositories),
@@ -170,7 +168,7 @@ interface CreateProvidersFromCollectionsOptions {
 }
 
 function createProvidersFromCollections(
-  collections: readonly AnyTypedMongoCollection[] = [],
+  collections: readonly MongoEntity[] = [],
   options: CreateProvidersFromCollectionsOptions,
 ): Provider[] {
   if (collections.length > 0 && !options.useInjectedFactory) {
@@ -179,7 +177,7 @@ function createProvidersFromCollections(
 
   return collections.map((collection) => ({
     inject: options.useInjectedFactory ? [TYPED_MONGO_REPOSITORY_FACTORY] : [],
-    provide: getTypedMongoRepositoryToken(collection.name),
+    provide: getTypedMongoRepositoryToken(collection.collection),
     useFactory: (repositoryFactory?: TypedMongoNestRepositoryFactory) => {
       const factory = options.repositoryFactory ?? repositoryFactory;
 
@@ -195,6 +193,18 @@ function createProvidersFromRepositoryRecord(
   return Object.entries(repositories).map(([collectionName, repository]) =>
     createTypedMongoRepositoryProvider(collectionName, repository),
   );
+}
+
+function createNotFoundMessage(
+  collectionName: string | undefined,
+  id: unknown,
+): string {
+  const subject =
+    collectionName === undefined
+      ? "Document"
+      : `Document in collection "${collectionName}"`;
+
+  return `${subject} with id "${String(id)}" was not found.`;
 }
 
 function assertRepositoryFactory(

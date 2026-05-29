@@ -1,327 +1,192 @@
-import { TypedMongoError } from "./errors";
-import {
-  getDocumentById,
-  type TypedMongoGetByIdCapableRepository,
-  type TypedMongoUpdate,
-} from "./repository";
+import { ObjectId, type Filter } from "mongodb";
 
-export type TypedMongoActiveRecordRepository<
-  TDocument,
-  TId = string,
-> = TypedMongoGetByIdCapableRepository<TDocument, TId> &
-  Partial<{
-    deleteById(id: TId): Promise<void>;
-    insertOne(document: TDocument): Promise<TDocument>;
-    updateById(id: TId, patch: TypedMongoUpdate<TDocument>): Promise<TDocument>;
-  }>;
+import type { MongoEntity } from "./entity";
+import type { Repository } from "./repository";
 
-export interface CreateActiveRecordOptions<TDocument, TId = string> {
-  collectionName?: string | undefined;
-  getId?: ((document: TDocument) => TId) | undefined;
-  persisted?: boolean | undefined;
+export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
+  data: TDocument;
+  save(): Promise<this>;
+  delete(): Promise<boolean>;
+  reload(): Promise<this>;
+  toJSON(): TDocument;
+  isNew(): boolean;
+  isDirty(): boolean;
 }
 
-export type TypedMongoActiveRecordChanges<TDocument> = Partial<
-  Omit<TDocument, "_id" | "id">
->;
+export interface ActiveRecordModel<TDocument extends { _id?: ObjectId }> {
+  create(input: Partial<TDocument>): Promise<ActiveRecordDocument<TDocument>>;
+  build(input: Partial<TDocument>): ActiveRecordDocument<TDocument>;
+  findById(id: ObjectId | string): Promise<ActiveRecordDocument<TDocument> | null>;
+  findOne(filter: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument> | null>;
+  findMany(filter?: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument>[]>;
+}
 
-export type TypedMongoActiveRecord<
-  TDocument extends object,
-  TId = string,
-> = TDocument & {
-  readonly $repository: TypedMongoActiveRecordRepository<TDocument, TId>;
-  $changes(): TypedMongoActiveRecordChanges<TDocument>;
-  $delete(): Promise<void>;
-  $isDirty(): boolean;
-  $reload(): Promise<TypedMongoActiveRecord<TDocument, TId>>;
-  $save(): Promise<TypedMongoActiveRecord<TDocument, TId>>;
-  $toObject(): TDocument;
-  $update(
-    patch: TypedMongoUpdate<TDocument>,
-  ): Promise<TypedMongoActiveRecord<TDocument, TId>>;
-  changes(): TypedMongoActiveRecordChanges<TDocument>;
-  delete(): Promise<void>;
-  isDirty(): boolean;
-  reload(): Promise<TypedMongoActiveRecord<TDocument, TId>>;
-  save(): Promise<TypedMongoActiveRecord<TDocument, TId>>;
-  toObject(): TDocument;
-  update(
-    patch: TypedMongoUpdate<TDocument>,
-  ): Promise<TypedMongoActiveRecord<TDocument, TId>>;
+export type CreateActiveRecordModelOptions<TDocument extends { _id?: ObjectId }> = {
+  entity: MongoEntity<any>;
+  repository: Repository<TDocument>;
 };
 
-export function createActiveRecord<TDocument extends object, TId = string>(
-  document: TDocument,
-  repository: TypedMongoActiveRecordRepository<TDocument, TId>,
-  options: CreateActiveRecordOptions<TDocument, TId> = {},
-): TypedMongoActiveRecord<TDocument, TId> {
-  const record = { ...document } as TypedMongoActiveRecord<TDocument, TId>;
-  const state = {
-    baseline: cloneDocument(document),
-    deleted: false,
-    persisted: options.persisted ?? true,
+export function createActiveRecordModel<TDocument extends { _id?: ObjectId }>(
+  options: CreateActiveRecordModelOptions<TDocument>,
+): ActiveRecordModel<TDocument> {
+  const wrap = (
+    data: Partial<TDocument> | TDocument,
+    persisted: boolean,
+  ): ActiveRecordDocument<TDocument> =>
+    new DefaultActiveRecordDocument(
+      options.repository,
+      data as TDocument,
+      persisted ? (data as TDocument) : null,
+    );
+
+  return {
+    build(input) {
+      return wrap(input, false);
+    },
+    async create(input) {
+      return wrap(await options.repository.create(input), true);
+    },
+    async findById(id) {
+      const document = await options.repository.findById(id);
+
+      return document === null ? null : wrap(document, true);
+    },
+    async findMany(filter = {}) {
+      const documents = await options.repository.findMany(filter);
+
+      return documents.map((document) => wrap(document, true));
+    },
+    async findOne(filter) {
+      const document = await options.repository.findOne(filter);
+
+      return document === null ? null : wrap(document, true);
+    },
   };
-  const resolveId = () => resolveActiveRecordId(record.$toObject(), options);
-
-  Object.defineProperties(record, {
-    $changes: {
-      enumerable: false,
-      value: () => computeDocumentChanges(state.baseline, record.$toObject()),
-    },
-    $delete: {
-      enumerable: false,
-      value: async () => {
-        if (typeof repository.deleteById !== "function") {
-          throw new TypedMongoError(
-            "Active record delete requires repository.deleteById.",
-            { code: "TYPED_MONGO_ACTIVE_RECORD_UNSUPPORTED" },
-          );
-        }
-
-        await repository.deleteById(resolveId());
-        state.deleted = true;
-      },
-    },
-    $isDirty: {
-      enumerable: false,
-      value: () => Object.keys(record.$changes()).length > 0,
-    },
-    $repository: {
-      enumerable: false,
-      value: repository,
-    },
-    $reload: {
-      enumerable: false,
-      value: async () => {
-        const next = await getDocumentById(repository, resolveId(), {
-          collectionName: options.collectionName,
-        });
-
-        replaceRecordDocument(record, next);
-        state.baseline = cloneDocument(next);
-        state.deleted = false;
-        return record;
-      },
-    },
-    $save: {
-      enumerable: false,
-      value: async () => {
-        if (state.deleted) {
-          throw new TypedMongoError("Deleted active records cannot be saved.", {
-            code: "TYPED_MONGO_ACTIVE_RECORD_DELETED",
-          });
-        }
-
-        if (!state.persisted) {
-          const inserted = await insertActiveRecord(record.$toObject(), repository);
-
-          replaceRecordDocument(record, inserted);
-          state.baseline = cloneDocument(inserted);
-          state.persisted = true;
-          return record;
-        }
-
-        if (typeof repository.updateById !== "function") {
-          throw new TypedMongoError(
-            "Active record save requires repository.updateById.",
-            { code: "TYPED_MONGO_ACTIVE_RECORD_UNSUPPORTED" },
-          );
-        }
-
-        const changes = record.$changes();
-
-        if (Object.keys(changes).length === 0) {
-          return record;
-        }
-
-        const next = await repository.updateById(resolveId(), changes);
-
-        replaceRecordDocument(record, next);
-        state.baseline = cloneDocument(next);
-        return record;
-      },
-    },
-    $toObject: {
-      enumerable: false,
-      value: () => {
-        const snapshot = { ...record };
-
-        for (const key of Object.keys(snapshot)) {
-          if (key.startsWith("$")) {
-            delete (snapshot as Record<string, unknown>)[key];
-          }
-        }
-
-        return snapshot as TDocument;
-      },
-    },
-    $update: {
-      enumerable: false,
-      value: async (patch: TypedMongoUpdate<TDocument>) => {
-        if (typeof repository.updateById !== "function") {
-          throw new TypedMongoError(
-            "Active record update requires repository.updateById.",
-            { code: "TYPED_MONGO_ACTIVE_RECORD_UNSUPPORTED" },
-          );
-        }
-
-        const next = await repository.updateById(resolveId(), patch);
-        replaceRecordDocument(record, next);
-        state.baseline = cloneDocument(next);
-        return record;
-      },
-    },
-  });
-
-  Object.defineProperties(record, {
-    changes: {
-      enumerable: false,
-      value: record.$changes,
-    },
-    delete: {
-      enumerable: false,
-      value: record.$delete,
-    },
-    isDirty: {
-      enumerable: false,
-      value: record.$isDirty,
-    },
-    reload: {
-      enumerable: false,
-      value: record.$reload,
-    },
-    save: {
-      enumerable: false,
-      value: record.$save,
-    },
-    toObject: {
-      enumerable: false,
-      value: record.$toObject,
-    },
-    update: {
-      enumerable: false,
-      value: record.$update,
-    },
-  });
-
-  return record;
 }
 
-export function computeDocumentChanges<TDocument extends object>(
-  baseline: TDocument,
-  current: TDocument,
-): TypedMongoActiveRecordChanges<TDocument> {
-  const changes: Record<string, unknown> = {};
+class DefaultActiveRecordDocument<
+  TDocument extends { _id?: ObjectId },
+> implements ActiveRecordDocument<TDocument> {
+  private snapshot: TDocument | null;
 
-  for (const [key, value] of Object.entries(current)) {
-    if (key === "_id" || key === "id") {
-      continue;
+  constructor(
+    private readonly repository: Repository<TDocument>,
+    public data: TDocument,
+    snapshot: TDocument | null,
+  ) {
+    this.snapshot = clone(snapshot);
+  }
+
+  async delete(): Promise<boolean> {
+    if (this.data._id === undefined) {
+      return false;
     }
 
-    if (!isEqualValue(value, (baseline as Record<string, unknown>)[key])) {
-      changes[key] = value;
+    const deleted = await this.repository.deleteById(this.data._id);
+
+    if (deleted) {
+      this.snapshot = null;
     }
+
+    return deleted;
   }
 
-  return changes as TypedMongoActiveRecordChanges<TDocument>;
-}
-
-function resolveActiveRecordId<TDocument, TId>(
-  document: TDocument,
-  options: CreateActiveRecordOptions<TDocument, TId>,
-): TId {
-  if (options.getId !== undefined) {
-    return options.getId(document);
+  isDirty(): boolean {
+    return stableStringify(this.data) !== stableStringify(this.snapshot);
   }
 
-  const candidate =
-    (document as { _id?: unknown; id?: unknown })._id ??
-    (document as { _id?: unknown; id?: unknown }).id;
-
-  if (candidate === undefined || candidate === null) {
-    throw new TypedMongoError(
-      "Active record documents require an _id/id field or a custom getId option.",
-      { code: "TYPED_MONGO_ACTIVE_RECORD_ID_REQUIRED" },
-    );
+  isNew(): boolean {
+    return this.snapshot === null;
   }
 
-  return candidate as TId;
-}
-
-export async function insertActiveRecord<TDocument, TId>(
-  document: TDocument,
-  repository: TypedMongoActiveRecordRepository<TDocument, TId>,
-): Promise<TDocument> {
-  if (typeof repository.insertOne !== "function") {
-    throw new TypedMongoError(
-      "Active record save requires repository.updateById or repository.insertOne.",
-      { code: "TYPED_MONGO_ACTIVE_RECORD_UNSUPPORTED" },
-    );
-  }
-
-  return repository.insertOne(document);
-}
-
-function cloneDocument<TDocument>(document: TDocument): TDocument {
-  if (typeof structuredClone === "function") {
-    return structuredClone(document);
-  }
-
-  return JSON.parse(JSON.stringify(document)) as TDocument;
-}
-
-function isEqualValue(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) {
-    return true;
-  }
-
-  if (left instanceof Date && right instanceof Date) {
-    return left.getTime() === right.getTime();
-  }
-
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((value, index) => isEqualValue(value, right[index]))
-    );
-  }
-
-  if (isPlainObject(left) && isPlainObject(right)) {
-    const leftKeys = Object.keys(left);
-    const rightKeys = Object.keys(right);
-
-    return (
-      leftKeys.length === rightKeys.length &&
-      leftKeys.every((key) =>
-        isEqualValue(
-          (left as Record<string, unknown>)[key],
-          (right as Record<string, unknown>)[key],
-        ),
-      )
-    );
-  }
-
-  return false;
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (Object.getPrototypeOf(value) === Object.prototype ||
-      Object.getPrototypeOf(value) === null)
-  );
-}
-
-function replaceRecordDocument<TDocument extends object, TId>(
-  record: TypedMongoActiveRecord<TDocument, TId>,
-  document: TDocument,
-): void {
-  for (const key of Object.keys(record)) {
-    if (!(key in document)) {
-      delete (record as Record<string, unknown>)[key];
+  async reload(): Promise<this> {
+    if (this.data._id === undefined) {
+      return this;
     }
+
+    const document = await this.repository.findById(this.data._id);
+
+    if (document !== null) {
+      this.data = document;
+      this.snapshot = clone(document);
+    }
+
+    return this;
   }
 
-  Object.assign(record, document);
+  async save(): Promise<this> {
+    const document =
+      this.data._id === undefined || this.isNew()
+        ? await this.repository.create(this.data)
+        : await this.repository.updateById(this.data._id, this.data);
+
+    if (document !== null) {
+      this.data = document;
+      this.snapshot = clone(document);
+    }
+
+    return this;
+  }
+
+  toJSON(): TDocument {
+    return this.data;
+  }
+}
+
+function clone<TValue>(value: TValue): TValue {
+  if (value === null) {
+    return value;
+  }
+
+  return cloneValue(value) as TValue;
+}
+
+function cloneValue(value: unknown): unknown {
+  if (value instanceof ObjectId) {
+    return new ObjectId(value);
+  }
+
+  if (value instanceof Date) {
+    return new Date(value);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(cloneValue);
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, nested]) => [key, cloneValue(nested)]),
+    );
+  }
+
+  return value;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortValue(value));
+}
+
+function sortValue(value: unknown): unknown {
+  if (value instanceof ObjectId) {
+    return value.toHexString();
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(sortValue);
+  }
+
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, sortValue(nested)]),
+    );
+  }
+
+  return value;
 }

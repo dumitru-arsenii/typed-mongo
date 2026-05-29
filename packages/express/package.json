@@ -1,6 +1,6 @@
 {
   "name": "@typed-mongo/express",
-  "version": "0.0.0",
+  "version": "0.0.2",
   "private": false,
   "description": "Express middleware helpers for typed-mongo repositories.",
   "type": "module",

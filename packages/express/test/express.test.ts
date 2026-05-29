@@ -1,4 +1,3 @@
-import { TypedMongoNotFoundError } from "@typed-mongo/core";
 import type { NextFunction, Request, Response } from "express";
 import { describe, expect, it, vi } from "vitest";
 
@@ -24,7 +23,7 @@ describe("@typed-mongo/express", () => {
   it("reads an id from params, calls the repository, and attaches the document", async () => {
     const user: User = { _id: "user_1", email: "ada@example.com" };
     const repository = {
-      getById: vi.fn(async () => user),
+      findById: vi.fn(async () => user),
     };
     const middleware = createGetByIdMiddleware({
       attachTo: "user",
@@ -38,7 +37,7 @@ describe("@typed-mongo/express", () => {
 
     await middleware(request, response, next);
 
-    expect(repository.getById).toHaveBeenCalledWith("user_1");
+    expect(repository.findById).toHaveBeenCalledWith("user_1");
     expect(request.user).toBe(user);
     expect(response.locals.user).toBe(user);
     expect(next).toHaveBeenCalledWith();
@@ -60,7 +59,10 @@ describe("@typed-mongo/express", () => {
 
     await middleware(request, response, next);
 
-    expect(next).toHaveBeenCalledWith(expect.any(TypedMongoNotFoundError));
+    expect(next).toHaveBeenCalledWith(expect.any(Error));
+    expect(next).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "TypedMongoNotFoundError" }),
+    );
     expect(response.status).not.toHaveBeenCalled();
   });
 
@@ -90,7 +92,7 @@ describe("@typed-mongo/express", () => {
   it("passes repository errors to next", async () => {
     const error = new Error("database offline");
     const repository = {
-      getById: vi.fn(async () => {
+      findById: vi.fn(async () => {
         throw error;
       }),
     };

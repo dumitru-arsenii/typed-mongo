@@ -1,107 +1,119 @@
-import {
-  activeRecordCollectionToRepository,
-  type AnyTypedMongoActiveRecordCollection,
-  type InferActiveRecordCollectionDocument,
-  type InferActiveRecordCollectionId,
-  type InferActiveRecordCollectionRecord,
-} from "./collection-active-record";
-import { TypedMongoError } from "./errors";
-import type { TypedMongoRepository } from "./repository";
+import type { ClientSession, Db } from "mongodb";
 
-export type TypedMongoEntityManagerCollectionMap = Record<
-  string,
-  AnyTypedMongoActiveRecordCollection
->;
+import { createActiveRecordModel, type ActiveRecordModel } from "./active-record";
+import { getMongoConnection } from "./connection";
+import type { EntityType, MongoEntity } from "./entity";
+import { createRepository, type Repository } from "./repository";
+import { syncIndexes } from "./sync-indexes";
 
-export type TypedMongoRepositoryMap = TypedMongoEntityManagerCollectionMap;
+export interface EntityManager {
+  repo<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): Repository<EntityType<TEntity>>;
+  active<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): ActiveRecordModel<EntityType<TEntity>>;
+  transaction<T>(callback: (tx: TransactionalEntityManager) => Promise<T>): Promise<T>;
+  syncIndexes(entities: MongoEntity[]): Promise<void>;
+}
 
-export type InferRepositoryDocument<TCollection> =
-  InferActiveRecordCollectionDocument<TCollection>;
+export interface TransactionalEntityManager extends EntityManager {
+  readonly session: ClientSession;
+}
 
-export type InferRepositoryId<TCollection> = InferActiveRecordCollectionId<TCollection>;
+export type CreateEntityManagerOptions = {
+  db?: Db;
+  session?: ClientSession;
+};
 
-export class TypedMongoEntityManager<
-  TCollections extends TypedMongoEntityManagerCollectionMap =
-    TypedMongoEntityManagerCollectionMap,
-> {
-  constructor(private readonly collections: TCollections) {}
-
-  activeRecord<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-    document: InferActiveRecordCollectionDocument<TCollections[TName]>,
-  ): InferActiveRecordCollectionRecord<TCollections[TName]> {
-    return this.collection(name).activeRecord(
-      document,
-    ) as InferActiveRecordCollectionRecord<TCollections[TName]>;
+export function createEntityManager(
+  options: CreateEntityManagerOptions = {},
+): EntityManager {
+  if (options.db !== undefined && options.session !== undefined) {
+    return new DefaultTransactionalEntityManager(options.db, options.session);
   }
 
-  entries(): [Extract<keyof TCollections, string>, TCollections[keyof TCollections]][] {
-    return Object.entries(this.collections) as [
-      Extract<keyof TCollections, string>,
-      TCollections[keyof TCollections],
-    ][];
+  return new DefaultEntityManager(options.db);
+}
+
+class DefaultEntityManager implements EntityManager {
+  constructor(private readonly db?: Db) {}
+
+  active<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): ActiveRecordModel<EntityType<TEntity>> {
+    return createActiveRecordModel({
+      entity,
+      repository: this.repo(entity),
+    });
   }
 
-  async findById<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-    id: InferActiveRecordCollectionId<TCollections[TName]>,
-  ): Promise<InferActiveRecordCollectionRecord<TCollections[TName]> | null> {
-    return this.collection(name).findById(
-      id,
-    ) as Promise<InferActiveRecordCollectionRecord<TCollections[TName]> | null>;
+  repo<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): Repository<EntityType<TEntity>> {
+    const db = this.db ?? getMongoConnection().db;
+
+    return createRepository({
+      db,
+      entity,
+    });
   }
 
-  async getById<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-    id: InferActiveRecordCollectionId<TCollections[TName]>,
-  ): Promise<InferActiveRecordCollectionRecord<TCollections[TName]>> {
-    return this.collection(name).getById(id) as Promise<
-      InferActiveRecordCollectionRecord<TCollections[TName]>
-    >;
+  async syncIndexes(entities: MongoEntity[]): Promise<void> {
+    await syncIndexes(entities, this.db);
   }
 
-  has(name: string): name is Extract<keyof TCollections, string> {
-    return Object.hasOwn(this.collections, name);
-  }
+  async transaction<T>(
+    callback: (tx: TransactionalEntityManager) => Promise<T>,
+  ): Promise<T> {
+    const connection = getMongoConnection();
+    const db = this.db ?? connection.db;
+    const session = connection.client.startSession();
 
-  collection<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-  ): TCollections[TName] {
-    const collection = this.collections[name];
+    try {
+      return await session.withTransaction(async () => {
+        const tx = new DefaultTransactionalEntityManager(db, session);
 
-    if (collection === undefined) {
-      throw new TypedMongoError(
-        `Collection active record "${name}" is not registered.`,
-        {
-          code: "TYPED_MONGO_COLLECTION_ACTIVE_RECORD_NOT_REGISTERED",
-        },
-      );
+        return callback(tx);
+      });
+    } finally {
+      await session.endSession();
     }
-
-    return collection;
-  }
-
-  async insertOne<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-    document: Parameters<TCollections[TName]["insertOne"]>[0],
-  ): Promise<InferActiveRecordCollectionRecord<TCollections[TName]>> {
-    return this.collection(name).insertOne(document) as Promise<
-      InferActiveRecordCollectionRecord<TCollections[TName]>
-    >;
-  }
-
-  repository<const TName extends Extract<keyof TCollections, string>>(
-    name: TName,
-  ): TypedMongoRepository<
-    InferActiveRecordCollectionDocument<TCollections[TName]>,
-    InferActiveRecordCollectionId<TCollections[TName]>
-  > {
-    return activeRecordCollectionToRepository(this.collection(name));
   }
 }
 
-export function createEntityManager<
-  TCollections extends TypedMongoEntityManagerCollectionMap,
->(collections: TCollections): TypedMongoEntityManager<TCollections> {
-  return new TypedMongoEntityManager(collections);
+class DefaultTransactionalEntityManager implements TransactionalEntityManager {
+  constructor(
+    private readonly db: Db,
+    public readonly session: ClientSession,
+  ) {}
+
+  active<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): ActiveRecordModel<EntityType<TEntity>> {
+    return createActiveRecordModel({
+      entity,
+      repository: this.repo(entity),
+    });
+  }
+
+  repo<TEntity extends MongoEntity<any>>(
+    entity: TEntity,
+  ): Repository<EntityType<TEntity>> {
+    return createRepository({
+      db: this.db,
+      entity,
+      session: this.session,
+    });
+  }
+
+  async syncIndexes(entities: MongoEntity[]): Promise<void> {
+    await syncIndexes(entities, this.db);
+  }
+
+  async transaction<T>(): Promise<T> {
+    throw new Error("Nested transactions are not supported yet.");
+  }
 }
+
+export const entityManager = createEntityManager();

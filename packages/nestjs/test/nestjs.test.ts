@@ -1,5 +1,5 @@
 import { NotFoundException } from "@nestjs/common";
-import type { AnyTypedMongoCollection } from "@typed-mongo/core";
+import type { MongoEntity } from "@typed-mongo/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -17,7 +17,7 @@ interface User {
   email: string;
 }
 
-const users = { name: "users" } as AnyTypedMongoCollection;
+const users = { collection: "users" } as MongoEntity;
 
 describe("@typed-mongo/nestjs", () => {
   it("creates stable repository injection tokens", () => {
@@ -27,7 +27,6 @@ describe("@typed-mongo/nestjs", () => {
   it("creates repository providers and decorators", () => {
     const repository = {
       findById: vi.fn(async () => null),
-      getById: vi.fn(async () => ({ _id: "user_1", email: "ada@example.com" })),
     };
     const provider = createTypedMongoRepositoryProvider("users", repository);
 
@@ -42,9 +41,6 @@ describe("@typed-mongo/nestjs", () => {
     const repository = {
       async findById() {
         return null;
-      },
-      async getById() {
-        return { _id: "user_1", email: "ada@example.com" };
       },
     };
 
@@ -63,9 +59,6 @@ describe("@typed-mongo/nestjs", () => {
     const repository = {
       async findById() {
         return null;
-      },
-      async getById() {
-        return { _id: "user_1", email: "ada@example.com" };
       },
     };
     const repositoryFactory = vi.fn(() => repository);
@@ -96,9 +89,6 @@ describe("@typed-mongo/nestjs", () => {
       async findById() {
         return null;
       },
-      async getById() {
-        return { _id: "user_1", email: "ada@example.com" };
-      },
     };
     const repositoryFactory = vi.fn(() => repository);
 
@@ -123,7 +113,7 @@ describe("@typed-mongo/nestjs", () => {
   it("loads documents with the get-by-id pipe", async () => {
     const user: User = { _id: "user_1", email: "ada@example.com" };
     const repository = {
-      getById: vi.fn(async () => user),
+      findById: vi.fn(async () => user),
     };
     const pipe = createGetByIdPipe({
       mapId: (value) => String(value),
@@ -133,7 +123,7 @@ describe("@typed-mongo/nestjs", () => {
     await expect(
       pipe.transform("user_1", { data: "id", metatype: String, type: "param" }),
     ).resolves.toBe(user);
-    expect(repository.getById).toHaveBeenCalledWith("user_1");
+    expect(repository.findById).toHaveBeenCalledWith("user_1");
   });
 
   it("maps typed not-found errors to NestJS NotFoundException", async () => {

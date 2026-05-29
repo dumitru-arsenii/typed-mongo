@@ -1,77 +1,134 @@
 # @typed-mongo/core
 
-Framework-agnostic primitives for `typed-mongo`.
+Zod-first MongoDB document layer built directly on the official MongoDB Node.js
+driver.
 
-```ts
-import { z } from "zod";
-import {
-  defineCollection,
-  initAR,
-  initRepository,
-  type InferDocument,
-} from "@typed-mongo/core";
+## Installation
 
-export const usersCollection = defineCollection({
-  name: "users",
-  schema: z.object({
-    _id: z.string(),
-    email: z.string().email(),
-  }),
-});
-
-export type UserDocument = InferDocument<typeof usersCollection>;
+```sh
+npm install @typed-mongo/core mongodb zod
 ```
 
-Includes collection definitions, runtime validation helpers, index metadata,
-collection registries, repository contracts, entity manager helpers, active
-record helpers, hook interfaces, and typed errors.
-
-## Collection Reference
+## Define Entity
 
 ```ts
-usersCollection.parse(input);
-usersCollection.safeParse(input);
+import { createMongoEntity, mongoId, timestamps } from "@typed-mongo/core";
+import { z } from "zod";
+
+export const UserEntity = createMongoEntity({
+  collection: "users",
+  schema: z.object({
+    _id: mongoId().optional(),
+    email: z.string().email(),
+    name: z.string().min(1),
+    role: z.enum(["admin", "user"]).default("user"),
+    ...timestamps(),
+  }),
+  indexes: [
+    {
+      keys: { email: 1 },
+      unique: true,
+    },
+  ],
+});
+```
+
+## Connect Once
+
+```ts
+import { connectMongo, disconnectMongo } from "@typed-mongo/core";
+
+await connectMongo({
+  uri: process.env.MONGO_URI!,
+  database: process.env.MONGO_DATABASE!,
+});
+
+await disconnectMongo();
+```
+
+`connectMongo(...)` stores the internal MongoDB connection used by the exported
+singleton `entityManager`. Operations are not buffered. If no connection exists,
+`entityManager` throws `TypedMongoConnectionError` immediately:
+
+```txt
+No MongoDB connection associated. Call connectMongo(...) before using entityManager.
 ```
 
 ## Repository
 
-```ts
-const UserRepository = initRepository(usersCollection);
-
-await UserRepository.insertOne(document);
-const user = await UserRepository.findOne({ _id: "user_1" });
-await UserRepository.updateMany({ role: "admin" }, { role: "user" });
-```
-
-`initRepository(collection)` uses an in-memory adapter by default. Pass a custom
-adapter for production persistence.
-
-## Active Record
+Repository is the primary API.
 
 ```ts
-const User = initAR(usersCollection);
+import { entityManager } from "@typed-mongo/core";
 
-const user = await User.byId("user_1");
+const users = entityManager.repo(UserEntity);
 
-user.email = "ada@example.com";
-await user.save();
-```
-
-`save()` compares the current document to the last persisted snapshot and calls
-`updateById` with only changed top-level fields.
-
-## Entity Manager
-
-```ts
-import { createEntityManager } from "@typed-mongo/core";
-
-const manager = createEntityManager({
-  users: User,
+const user = await users.create({
+  email: "john@example.com",
+  name: "John",
 });
 
-const user = await manager.getById("users", "user_1");
+const found = await users.findById(user._id);
+```
+
+Repositories validate data with the entity Zod schema before inserts and after
+updates. They use native MongoDB filters and options, return parsed documents,
+and pass sessions to driver operations inside transactions.
+
+## ActiveRecord
+
+ActiveRecord is a convenience layer over Repository.
+
+```ts
+const User = entityManager.active(UserEntity);
+
+const user = await User.create({
+  email: "john@example.com",
+  name: "John",
+});
+
+user.data.name = "Johnny";
+
+await user.save();
+await user.reload();
 await user.delete();
 ```
 
-The active record and entity manager call repositories initialized for your
-collection. They do not create a MongoDB connection or hide a driver adapter.
+## Transaction
+
+EntityManager is the orchestration API.
+
+```ts
+await entityManager.transaction(async (tx) => {
+  const user = await tx.repo(UserEntity).create({
+    email: "john@example.com",
+    name: "John",
+  });
+
+  await tx.repo(ProfileEntity).create({
+    userId: user._id,
+    displayName: user.name,
+  });
+});
+```
+
+Transactions use the native driver `ClientSession` and `withTransaction` APIs.
+Nested transactions are not supported yet.
+
+## Sync Indexes
+
+```ts
+import { syncIndexes } from "@typed-mongo/core";
+
+await syncIndexes([UserEntity, PostEntity]);
+await entityManager.syncIndexes([UserEntity, PostEntity]);
+```
+
+## Architecture
+
+- `connectMongo(...)` is responsible for setting the internal connection.
+- The exported singleton `entityManager` is the default public API.
+- You do not pass `db` to every repository call.
+- The package never silently creates connections.
+- The package never buffers operations before connection.
+- Multi-tenant and named connections are intentionally left for a later version.
