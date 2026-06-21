@@ -14,9 +14,13 @@ describe("connection", () => {
     await stopMongo();
   });
 
-  it("throws before connectMongo is called", () => {
-    expect(() => entityManager.repo(UserEntity)).toThrow(TypedMongoConnectionError);
-    expect(() => entityManager.repo(UserEntity)).toThrow(
+  it("throws only execute some method before connectMongo is called", () => {
+    expect(() => {
+      const repo = entityManager.repo(UserEntity);
+
+      return repo.count();
+    }).rejects.toThrow(TypedMongoConnectionError);
+    expect(() => entityManager.repo(UserEntity).count()).rejects.toThrow(
       "No MongoDB connection associated. Call connectMongo(...) before using entityManager.",
     );
   });

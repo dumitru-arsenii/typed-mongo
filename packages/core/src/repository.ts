@@ -41,7 +41,7 @@ export interface Repository<TDocument extends { _id?: ObjectId }> {
 }
 
 export type CreateRepositoryOptions<TEntity extends MongoEntity<any>> = {
-  db: Db;
+  db: () => Db;
   entity: TEntity;
   session?: ClientSession;
 };
@@ -51,18 +51,20 @@ export function createRepository<TEntity extends MongoEntity<any>>(
 ): Repository<EntityType<TEntity>> {
   type TDocument = EntityType<TEntity>;
 
-  const collection = options.db.collection<TDocument>(options.entity.collection);
+  const getCollection = () => options.db().collection<TDocument>(options.entity.collection);
   const sessionOptions = options.session ? { session: options.session } : {};
 
   return {
-    collection,
+    get collection() {
+      return getCollection()
+    },
     async count(filter = {}) {
-      return collection.countDocuments(filter, sessionOptions);
+      return getCollection().countDocuments(filter, sessionOptions);
     },
     async create(input) {
       const document = parseEntity(options.entity, prepareInsert(input));
 
-      await collection.insertOne(
+      await getCollection().insertOne(
         document as OptionalUnlessRequiredId<TDocument>,
         sessionOptions,
       );
@@ -73,25 +75,25 @@ export function createRepository<TEntity extends MongoEntity<any>>(
       return this.deleteOne({ _id: normalizeId(id) } as unknown as Filter<TDocument>);
     },
     async deleteOne(filter) {
-      const result = await collection.deleteOne(filter, sessionOptions);
+      const result = await getCollection().deleteOne(filter, sessionOptions);
 
       return result.deletedCount === 1;
     },
     async exists(filter) {
-      return (await collection.findOne(filter, sessionOptions)) !== null;
+      return (await getCollection().findOne(filter, sessionOptions)) !== null;
     },
     async findById(id) {
       return this.findOne({ _id: normalizeId(id) } as unknown as Filter<TDocument>);
     },
     async findMany(filter = {}, findOptions = {}) {
-      const documents = await collection
+      const documents = await getCollection()
         .find(filter, { ...findOptions, ...sessionOptions })
         .toArray();
 
       return documents.map((document) => parseEntity(options.entity, document));
     },
     async findOne(filter, findOptions = {}) {
-      const document = await collection.findOne(filter, {
+      const document = await getCollection().findOne(filter, {
         ...findOptions,
         ...sessionOptions,
       });
@@ -107,7 +109,7 @@ export function createRepository<TEntity extends MongoEntity<any>>(
         parseEntity(options.entity, prepareInsert(input)),
       );
 
-      await collection.insertMany(
+      await getCollection().insertMany(
         documents as OptionalUnlessRequiredId<TDocument>[],
         sessionOptions,
       );
@@ -130,7 +132,7 @@ export function createRepository<TEntity extends MongoEntity<any>>(
       const merged = parseEntity(options.entity, prepareUpdate(current, patch));
       const update = toMongoSet(merged);
 
-      await collection.updateOne(
+      await getCollection().updateOne(
         { _id: merged._id } as Filter<TDocument>,
         { $set: update } as UpdateFilter<TDocument>,
         sessionOptions,

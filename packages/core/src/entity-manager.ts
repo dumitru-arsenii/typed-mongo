@@ -39,6 +39,10 @@ export function createEntityManager(
 class DefaultEntityManager implements EntityManager {
   constructor(private readonly db?: Db) {}
 
+  private getDb() {
+    return this.db ?? getMongoConnection().db
+  }
+
   active<TEntity extends MongoEntity<any>>(
     entity: TEntity,
   ): ActiveRecordModel<EntityType<TEntity>> {
@@ -51,28 +55,25 @@ class DefaultEntityManager implements EntityManager {
   repo<TEntity extends MongoEntity<any>>(
     entity: TEntity,
   ): Repository<EntityType<TEntity>> {
-    const db = this.db ?? getMongoConnection().db;
-
     return createRepository({
-      db,
+      db: () => this.getDb(),
       entity,
     });
   }
 
   async syncIndexes(entities: MongoEntity[]): Promise<void> {
-    await syncIndexes(entities, this.db);
+    await syncIndexes(entities, this.getDb());
   }
 
   async transaction<T>(
     callback: (tx: TransactionalEntityManager) => Promise<T>,
   ): Promise<T> {
     const connection = getMongoConnection();
-    const db = this.db ?? connection.db;
     const session = connection.client.startSession();
 
     try {
       return await session.withTransaction(async () => {
-        const tx = new DefaultTransactionalEntityManager(db, session);
+        const tx = new DefaultTransactionalEntityManager(this.getDb(), session);
 
         return callback(tx);
       });
@@ -101,7 +102,7 @@ class DefaultTransactionalEntityManager implements TransactionalEntityManager {
     entity: TEntity,
   ): Repository<EntityType<TEntity>> {
     return createRepository({
-      db: this.db,
+      db: () => this.db,
       entity,
       session: this.session,
     });
