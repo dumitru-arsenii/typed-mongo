@@ -1,5 +1,5 @@
-import type { IndexDescription, ObjectId } from "mongodb";
-import type { z } from "zod";
+import { ObjectId, type IndexDescription } from "mongodb";
+import { z } from "zod";
 
 type TimestampKeys<TDocument> = Extract<keyof TDocument, "createdAt" | "updatedAt">;
 
@@ -37,18 +37,24 @@ export type EntityUpdate<TEntity extends MongoEntity<any>> = Partial<
   Omit<EntityType<TEntity>, "_id" | "createdAt" | "updatedAt">
 >;
 
-export function createMongoEntity<TSchema extends z.ZodTypeAny>(
+export function createMongoEntity<TSchema extends z.SomeZodObject>(
   options: MongoEntityOptions<TSchema>,
 ): MongoEntity<TSchema> {
+  const entitySchema = options.schema.extend({
+    _id: z.instanceof(ObjectId)
+  })
+
   return {
     collection: options.collection,
     indexes: options.indexes ?? [],
     parse(input) {
-      return options.schema.parse(input);
+      return entitySchema.parse(input);
     },
     safeParse(input) {
-      return options.schema.safeParse(input);
+      return entitySchema.safeParse(input);
     },
-    schema: options.schema,
+    get schema() {
+      return entitySchema as unknown as TSchema
+    },
   };
 }
