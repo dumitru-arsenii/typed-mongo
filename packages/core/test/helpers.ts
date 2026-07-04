@@ -36,6 +36,17 @@ export const ProfileEntity = createMongoEntity({
 let replSet: MongoMemoryReplSet | null = null;
 
 export async function startMongo() {
+  if (process.env.TEST_MONGO_URI !== undefined) {
+    if (hasMongoConnection()) {
+      return getMongoConnection();
+    }
+
+    return connectMongo({
+      database: process.env.TEST_MONGO_DATABASE ?? "typed_mongo_test",
+      uri: process.env.TEST_MONGO_URI,
+    });
+  }
+
   if (replSet !== null && hasMongoConnection()) {
     return getMongoConnection();
   }
@@ -56,8 +67,11 @@ export async function startMongo() {
 
 export async function stopMongo() {
   await disconnectMongo();
-  await replSet?.stop();
-  replSet = null;
+
+  if (process.env.TEST_MONGO_URI === undefined) {
+    await replSet?.stop();
+    replSet = null;
+  }
 }
 
 export async function clearMongo() {
