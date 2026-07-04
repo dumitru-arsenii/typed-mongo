@@ -11,7 +11,22 @@ export { mongoId, timestamps } from "./zod-helpers";
 export { TypedMongoConnectionError, TypedMongoValidationError } from "./errors";
 
 export type { ConnectMongoOptions, TypedMongoConnection } from "./connection";
-export type { EntityInput, EntityType, EntityUpdate, MongoEntity } from "./entity";
+export type {
+  EntityInput,
+  EntityRelation,
+  EntityRelationMap,
+  EntityRelations,
+  EntityType,
+  EntityUpdate,
+  MongoEntity,
+  RelationBuilder,
+  RelationKind,
+} from "./entity";
 export type { EntityManager, TransactionalEntityManager } from "./entity-manager";
-export type { Repository } from "./repository";
-export type { ActiveRecordDocument, ActiveRecordModel } from "./active-record";
+export type { MongoRepository, RelationRepository, Repository } from "./repository";
+export type {
+  ActiveRecordDocument,
+  ActiveRecordModel,
+  MongoActiveRecordDocument,
+  MongoActiveRecordModel,
+} from "./active-record";
