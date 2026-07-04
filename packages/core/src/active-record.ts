@@ -1,6 +1,6 @@
 import { ObjectId, type Filter } from "mongodb";
 
-import type { MongoEntity } from "./entity";
+import type { EntityInput, EntityType, EntityUpdate, MongoEntity } from "./entity";
 import type { Repository } from "./repository";
 
 export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
@@ -13,22 +13,31 @@ export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
   isDirty(): boolean;
 }
 
-export interface ActiveRecordModel<TDocument extends { _id?: ObjectId }> {
-  create(input: Partial<TDocument>): Promise<ActiveRecordDocument<TDocument>>;
-  build(input: Partial<TDocument>): ActiveRecordDocument<TDocument>;
+export interface ActiveRecordModel<
+  TDocument extends { _id?: ObjectId },
+  TCreateInput = Partial<TDocument>,
+> {
+  create(input: TCreateInput): Promise<ActiveRecordDocument<TDocument>>;
+  build(input: TCreateInput): ActiveRecordDocument<TDocument>;
   findById(id: ObjectId | string): Promise<ActiveRecordDocument<TDocument> | null>;
   findOne(filter: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument> | null>;
   findMany(filter?: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument>[]>;
 }
 
-export type CreateActiveRecordModelOptions<TDocument extends { _id?: ObjectId }> = {
-  entity: MongoEntity<any>;
-  repository: Repository<TDocument>;
+export type CreateActiveRecordModelOptions<TEntity extends MongoEntity<any>> = {
+  entity: TEntity;
+  repository: Repository<
+    EntityType<TEntity>,
+    EntityInput<TEntity>,
+    EntityUpdate<TEntity>
+  >;
 };
 
-export function createActiveRecordModel<TDocument extends { _id?: ObjectId }>(
-  options: CreateActiveRecordModelOptions<TDocument>,
-): ActiveRecordModel<TDocument> {
+export function createActiveRecordModel<TEntity extends MongoEntity<any>>(
+  options: CreateActiveRecordModelOptions<TEntity>,
+): ActiveRecordModel<EntityType<TEntity>, EntityInput<TEntity>> {
+  type TDocument = EntityType<TEntity>;
+
   const wrap = (
     data: Partial<TDocument> | TDocument,
     persisted: boolean,
@@ -70,7 +79,7 @@ class DefaultActiveRecordDocument<
   private snapshot: TDocument | null;
 
   constructor(
-    private readonly repository: Repository<TDocument>,
+    private readonly repository: Repository<TDocument, unknown, unknown>,
     public data: TDocument,
     snapshot: TDocument | null,
   ) {

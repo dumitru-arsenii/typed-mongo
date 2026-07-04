@@ -49,23 +49,26 @@ describe("entity manager", () => {
     });
   });
 
-  it("passes a session into transaction repositories", async () => {
-    await entityManager.transaction(async (tx) => {
-      expect(tx.session).toBeDefined();
+  it.skipIf(process.env.TEST_MONGO_STANDALONE === "true")(
+    "passes a session into transaction repositories",
+    async () => {
+      await entityManager.transaction(async (tx) => {
+        expect(tx.session).toBeDefined();
 
-      const user = await tx.repo(UserEntity).create({
-        email: "john@example.com",
-        name: "John",
+        const user = await tx.repo(UserEntity).create({
+          email: "john@example.com",
+          name: "John",
+        });
+
+        await tx.repo(ProfileEntity).create({
+          displayName: user.name,
+          userId: user._id,
+        });
       });
 
-      await tx.repo(ProfileEntity).create({
-        displayName: user.name,
-        userId: user._id,
-      });
-    });
-
-    await expect(entityManager.repo(ProfileEntity).count()).resolves.toBe(1);
-  });
+      await expect(entityManager.repo(ProfileEntity).count()).resolves.toBe(1);
+    },
+  );
 
   it("rejects nested transactions", async () => {
     await expect(

@@ -11,12 +11,22 @@ import {
 import { ZodError } from "zod";
 
 import { TypedMongoValidationError } from "./errors";
-import type { EntityType, MongoEntity } from "./entity";
+import type {
+  EntityInput,
+  EntityType,
+  EntityUpdate,
+  MongoEntity,
+  MongoVariantEntity,
+} from "./entity";
 
-export interface Repository<TDocument extends { _id?: ObjectId }> {
+export interface Repository<
+  TDocument extends { _id?: ObjectId },
+  TCreateInput = Partial<TDocument>,
+  TUpdateInput = Partial<TDocument>,
+> {
   collection: Collection<TDocument>;
-  create(input: Partial<TDocument>): Promise<TDocument>;
-  insertMany(inputs: Partial<TDocument>[]): Promise<TDocument[]>;
+  create(input: TCreateInput): Promise<TDocument>;
+  insertMany(inputs: TCreateInput[]): Promise<TDocument[]>;
   findById(id: ObjectId | string): Promise<TDocument | null>;
   findOne(
     filter: Filter<TDocument>,
@@ -26,14 +36,8 @@ export interface Repository<TDocument extends { _id?: ObjectId }> {
     filter?: Filter<TDocument>,
     options?: FindOptions<TDocument>,
   ): Promise<TDocument[]>;
-  updateById(
-    id: ObjectId | string,
-    patch: Partial<TDocument>,
-  ): Promise<TDocument | null>;
-  updateOne(
-    filter: Filter<TDocument>,
-    patch: Partial<TDocument>,
-  ): Promise<TDocument | null>;
+  updateById(id: ObjectId | string, patch: TUpdateInput): Promise<TDocument | null>;
+  updateOne(filter: Filter<TDocument>, patch: TUpdateInput): Promise<TDocument | null>;
   deleteById(id: ObjectId | string): Promise<boolean>;
   deleteOne(filter: Filter<TDocument>): Promise<boolean>;
   count(filter?: Filter<TDocument>): Promise<number>;
@@ -48,21 +52,29 @@ export type CreateRepositoryOptions<TEntity extends MongoEntity<any>> = {
 
 export function createRepository<TEntity extends MongoEntity<any>>(
   options: CreateRepositoryOptions<TEntity>,
-): Repository<EntityType<TEntity>> {
+): Repository<EntityType<TEntity>, EntityInput<TEntity>, EntityUpdate<TEntity>> {
   type TDocument = EntityType<TEntity>;
 
-  const getCollection = () => options.db().collection<TDocument>(options.entity.collection);
+  const getCollection = () =>
+    options.db().collection<TDocument>(options.entity.collection);
   const sessionOptions = options.session ? { session: options.session } : {};
+  const entity = options.entity;
 
   return {
     get collection() {
-      return getCollection()
+      return getCollection();
     },
     async count(filter = {}) {
-      return getCollection().countDocuments(filter, sessionOptions);
+      return getCollection().countDocuments(
+        scopeVariantFilter(entity, filter),
+        sessionOptions,
+      );
     },
     async create(input) {
-      const document = parseEntity(options.entity, prepareInsert(input));
+      const document = parseEntity(
+        entity,
+        prepareInsert(withVariantDiscriminator(entity, input)),
+      );
 
       await getCollection().insertOne(
         document as OptionalUnlessRequiredId<TDocument>,
@@ -75,30 +87,41 @@ export function createRepository<TEntity extends MongoEntity<any>>(
       return this.deleteOne({ _id: normalizeId(id) } as unknown as Filter<TDocument>);
     },
     async deleteOne(filter) {
-      const result = await getCollection().deleteOne(filter, sessionOptions);
+      const result = await getCollection().deleteOne(
+        scopeVariantFilter(entity, filter),
+        sessionOptions,
+      );
 
       return result.deletedCount === 1;
     },
     async exists(filter) {
-      return (await getCollection().findOne(filter, sessionOptions)) !== null;
+      return (
+        (await getCollection().findOne(
+          scopeVariantFilter(entity, filter),
+          sessionOptions,
+        )) !== null
+      );
     },
     async findById(id) {
       return this.findOne({ _id: normalizeId(id) } as unknown as Filter<TDocument>);
     },
     async findMany(filter = {}, findOptions = {}) {
       const documents = await getCollection()
-        .find(filter, { ...findOptions, ...sessionOptions })
+        .find(scopeVariantFilter(entity, filter), { ...findOptions, ...sessionOptions })
         .toArray();
 
-      return documents.map((document) => parseEntity(options.entity, document));
+      return documents.map((document) => parseEntity(entity, document));
     },
     async findOne(filter, findOptions = {}) {
-      const document = await getCollection().findOne(filter, {
-        ...findOptions,
-        ...sessionOptions,
-      });
+      const document = await getCollection().findOne(
+        scopeVariantFilter(entity, filter),
+        {
+          ...findOptions,
+          ...sessionOptions,
+        },
+      );
 
-      return document === null ? null : parseEntity(options.entity, document);
+      return document === null ? null : parseEntity(entity, document);
     },
     async insertMany(inputs) {
       if (inputs.length === 0) {
@@ -106,7 +129,7 @@ export function createRepository<TEntity extends MongoEntity<any>>(
       }
 
       const documents = inputs.map((input) =>
-        parseEntity(options.entity, prepareInsert(input)),
+        parseEntity(entity, prepareInsert(withVariantDiscriminator(entity, input))),
       );
 
       await getCollection().insertMany(
@@ -129,7 +152,10 @@ export function createRepository<TEntity extends MongoEntity<any>>(
         return null;
       }
 
-      const merged = parseEntity(options.entity, prepareUpdate(current, patch));
+      const merged = parseEntity(
+        entity,
+        prepareUpdate(current, removeVariantDiscriminatorFromPatch(entity, patch)),
+      );
       const update = toMongoSet(merged);
 
       await getCollection().updateOne(
@@ -196,4 +222,51 @@ function toMongoSet<TDocument extends { _id?: ObjectId }>(
   const { _id: _id, ...update } = document;
 
   return update as Partial<TDocument>;
+}
+
+function isVariantEntity(entity: MongoEntity<any>): entity is MongoVariantEntity {
+  return entity.kind === "variant";
+}
+
+function withVariantDiscriminator<TInput>(
+  entity: MongoEntity<any>,
+  input: TInput,
+): Partial<TInput> {
+  if (!isVariantEntity(entity)) {
+    return input as Partial<TInput>;
+  }
+
+  return {
+    ...(input as Record<string, unknown>),
+    [entity.discriminator]: entity.discriminatorValue,
+  } as Partial<TInput>;
+}
+
+function scopeVariantFilter<TDocument>(
+  entity: MongoEntity<any>,
+  filter: Filter<TDocument>,
+): Filter<TDocument> {
+  if (!isVariantEntity(entity)) {
+    return filter;
+  }
+
+  return {
+    ...filter,
+    [entity.discriminator]: entity.discriminatorValue,
+  } as Filter<TDocument>;
+}
+
+function removeVariantDiscriminatorFromPatch<TInput>(
+  entity: MongoEntity<any>,
+  patch: TInput,
+): Partial<TInput> {
+  if (!isVariantEntity(entity)) {
+    return patch as Partial<TInput>;
+  }
+
+  const next = { ...(patch as Record<string, unknown>) };
+
+  delete next[entity.discriminator];
+
+  return next as Partial<TInput>;
 }
