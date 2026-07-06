@@ -1,6 +1,6 @@
 {
   "name": "@typed-mongo/core",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "private": false,
   "description": "Zod-first MongoDB collection definitions, validation helpers, and repository contracts.",
   "type": "module",

@@ -22,6 +22,7 @@ export type {
   MongoVariantEntity,
   NormalMongoEntity,
   MongoDiscriminatedVariants,
+  MongoDiscriminatedEntityOf,
 } from "./entity";
 export type { EntityManager, TransactionalEntityManager } from "./entity-manager";
 export type { Repository, RepositoryOf } from "./repository";
