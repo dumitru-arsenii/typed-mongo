@@ -51,6 +51,10 @@ export type MongoDiscriminatedEntity<
   variants: TVariants;
 };
 
+export type MongoDiscriminatedEntityOf<
+  TSchema extends z.ZodDiscriminatedUnion<any, any>,
+> = MongoDiscriminatedEntity<TSchema, MongoDiscriminatedVariants<TSchema>>;
+
 export type MongoEntity<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
   | NormalMongoEntity<TSchema>
   | MongoVariantEntity<TSchema>
