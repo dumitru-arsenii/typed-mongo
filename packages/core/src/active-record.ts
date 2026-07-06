@@ -2,6 +2,7 @@ import { ObjectId, type Filter } from "mongodb";
 
 import type { EntityInput, EntityType, EntityUpdate, MongoEntity } from "./entity";
 import type { Repository } from "./repository";
+import type { TypeOf, ZodTypeAny } from "zod";
 
 export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
   data: TDocument;
@@ -23,6 +24,10 @@ export interface ActiveRecordModel<
   findOne(filter: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument> | null>;
   findMany(filter?: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument>[]>;
 }
+
+export type ActiveRecordModelOf<TSchema extends ZodTypeAny> = ActiveRecordModel<
+  TypeOf<TSchema> & { _id: ObjectId }
+>;
 
 export type CreateActiveRecordModelOptions<TEntity extends MongoEntity<any>> = {
   entity: TEntity;

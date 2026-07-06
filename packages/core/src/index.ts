@@ -21,7 +21,12 @@ export type {
   MongoEntityIndex,
   MongoVariantEntity,
   NormalMongoEntity,
+  MongoDiscriminatedVariants,
 } from "./entity";
 export type { EntityManager, TransactionalEntityManager } from "./entity-manager";
-export type { Repository } from "./repository";
-export type { ActiveRecordDocument, ActiveRecordModel } from "./active-record";
+export type { Repository, RepositoryOf } from "./repository";
+export type {
+  ActiveRecordDocument,
+  ActiveRecordModel,
+  ActiveRecordModelOf,
+} from "./active-record";

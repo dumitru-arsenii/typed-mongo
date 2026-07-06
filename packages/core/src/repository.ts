@@ -8,7 +8,7 @@ import {
   type OptionalUnlessRequiredId,
   type UpdateFilter,
 } from "mongodb";
-import { ZodError } from "zod";
+import { ZodError, type TypeOf, type ZodTypeAny } from "zod";
 
 import { TypedMongoValidationError } from "./errors";
 import type {
@@ -43,6 +43,10 @@ export interface Repository<
   count(filter?: Filter<TDocument>): Promise<number>;
   exists(filter: Filter<TDocument>): Promise<boolean>;
 }
+
+export type RepositoryOf<TSchema extends ZodTypeAny> = Repository<
+  TypeOf<TSchema> & { _id: ObjectId }
+>;
 
 export type CreateRepositoryOptions<TEntity extends MongoEntity<any>> = {
   db: () => Db;
