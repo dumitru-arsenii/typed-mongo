@@ -25,3 +25,8 @@ export type {
 export type { EntityManager, TransactionalEntityManager } from "./entity-manager";
 export type { Repository } from "./repository";
 export type { ActiveRecordDocument, ActiveRecordModel } from "./active-record";
+export type {
+  MongoDiscriminatedCollection,
+  RepositoryLike,
+  ActiveRecordLike,
+} from "./helpers";
