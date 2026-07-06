@@ -75,6 +75,39 @@ Repositories validate data with the entity Zod schema before inserts and after
 updates. They use native MongoDB filters and options, return parsed documents,
 and pass sessions to driver operations inside transactions.
 
+## Zod Discriminated Unions
+
+Discriminated union entities generate variant repositories directly from the Zod
+schema. No custom `variants` config is needed.
+
+```ts
+const pageArtifactsEntity = createMongoEntity({
+  collection: "page_artifacts",
+  schema: z.discriminatedUnion("kind", [SectionArtifactSchema, SeoArtifactSchema]),
+});
+
+const pageArtifacts = entityManager.repo(pageArtifactsEntity);
+const sections = entityManager.repo(pageArtifactsEntity.variants.section);
+
+await pageArtifacts.create({
+  kind: "seo",
+  pageId,
+  title: "Home",
+});
+
+await sections.create({
+  pageId,
+  sectionKey: "hero",
+  order: 1,
+  props: {},
+});
+```
+
+The base repository works with the full union and requires the discriminator.
+Variant repositories are generated from the Zod discriminated union values. They
+automatically inject the discriminator on create and scope reads, updates,
+deletes, counts, and exists checks by that discriminator.
+
 ## ActiveRecord
 
 ActiveRecord is a convenience layer over Repository.

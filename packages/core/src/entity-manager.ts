@@ -2,17 +2,17 @@ import type { ClientSession, Db } from "mongodb";
 
 import { createActiveRecordModel, type ActiveRecordModel } from "./active-record";
 import { getMongoConnection } from "./connection";
-import type { EntityType, MongoEntity } from "./entity";
+import type { EntityInput, EntityType, EntityUpdate, MongoEntity } from "./entity";
 import { createRepository, type Repository } from "./repository";
 import { syncIndexes } from "./sync-indexes";
 
 export interface EntityManager {
   repo<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): Repository<EntityType<TEntity>>;
+  ): Repository<EntityType<TEntity>, EntityInput<TEntity>, EntityUpdate<TEntity>>;
   active<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): ActiveRecordModel<EntityType<TEntity>>;
+  ): ActiveRecordModel<EntityType<TEntity>, EntityInput<TEntity>>;
   transaction<T>(callback: (tx: TransactionalEntityManager) => Promise<T>): Promise<T>;
   syncIndexes(entities: MongoEntity[]): Promise<void>;
 }
@@ -40,12 +40,12 @@ class DefaultEntityManager implements EntityManager {
   constructor(private readonly db?: Db) {}
 
   private getDb() {
-    return this.db ?? getMongoConnection().db
+    return this.db ?? getMongoConnection().db;
   }
 
   active<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): ActiveRecordModel<EntityType<TEntity>> {
+  ): ActiveRecordModel<EntityType<TEntity>, EntityInput<TEntity>> {
     return createActiveRecordModel({
       entity,
       repository: this.repo(entity),
@@ -54,7 +54,7 @@ class DefaultEntityManager implements EntityManager {
 
   repo<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): Repository<EntityType<TEntity>> {
+  ): Repository<EntityType<TEntity>, EntityInput<TEntity>, EntityUpdate<TEntity>> {
     return createRepository({
       db: () => this.getDb(),
       entity,
@@ -91,7 +91,7 @@ class DefaultTransactionalEntityManager implements TransactionalEntityManager {
 
   active<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): ActiveRecordModel<EntityType<TEntity>> {
+  ): ActiveRecordModel<EntityType<TEntity>, EntityInput<TEntity>> {
     return createActiveRecordModel({
       entity,
       repository: this.repo(entity),
@@ -100,7 +100,7 @@ class DefaultTransactionalEntityManager implements TransactionalEntityManager {
 
   repo<TEntity extends MongoEntity<any>>(
     entity: TEntity,
-  ): Repository<EntityType<TEntity>> {
+  ): Repository<EntityType<TEntity>, EntityInput<TEntity>, EntityUpdate<TEntity>> {
     return createRepository({
       db: () => this.db,
       entity,
