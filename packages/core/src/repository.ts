@@ -8,9 +8,10 @@ import {
   type OptionalUnlessRequiredId,
   type UpdateFilter,
 } from "mongodb";
-import { ZodError, type TypeOf, type ZodTypeAny } from "zod";
+import { ZodError, ZodObject, type TypeOf, type ZodTypeAny } from "zod";
 
 import { TypedMongoValidationError } from "./errors";
+import { isIdentitySchema } from "./zod-helpers";
 import type {
   EntityInput,
   EntityType,
@@ -77,11 +78,11 @@ export function createRepository<TEntity extends MongoEntity<any>>(
     async create(input) {
       const document = parseEntity(
         entity,
-        prepareInsert(withVariantDiscriminator(entity, input)),
+        injectId(entity, prepareInsert(withVariantDiscriminator(entity, input))),
       );
 
       await getCollection().insertOne(
-        document as OptionalUnlessRequiredId<TDocument>,
+        stripIdentityFields(entity, document) as OptionalUnlessRequiredId<TDocument>,
         sessionOptions,
       );
 
@@ -114,7 +115,7 @@ export function createRepository<TEntity extends MongoEntity<any>>(
         .find(scopeVariantFilter(entity, filter), { ...findOptions, ...sessionOptions })
         .toArray();
 
-      return documents.map((document) => parseEntity(entity, document));
+      return documents.map((document) => parseEntity(entity, injectId(entity, document)));
     },
     async findOne(filter, findOptions = {}) {
       const document = await getCollection().findOne(
@@ -125,7 +126,7 @@ export function createRepository<TEntity extends MongoEntity<any>>(
         },
       );
 
-      return document === null ? null : parseEntity(entity, document);
+      return document === null ? null : parseEntity(entity, injectId(entity, document));
     },
     async insertMany(inputs) {
       if (inputs.length === 0) {
@@ -133,11 +134,16 @@ export function createRepository<TEntity extends MongoEntity<any>>(
       }
 
       const documents = inputs.map((input) =>
-        parseEntity(entity, prepareInsert(withVariantDiscriminator(entity, input))),
+        parseEntity(
+          entity,
+          injectId(entity, prepareInsert(withVariantDiscriminator(entity, input))),
+        ),
       );
 
       await getCollection().insertMany(
-        documents as OptionalUnlessRequiredId<TDocument>[],
+        documents.map((doc) =>
+          stripIdentityFields(entity, doc),
+        ) as OptionalUnlessRequiredId<TDocument>[],
         sessionOptions,
       );
 
@@ -158,9 +164,12 @@ export function createRepository<TEntity extends MongoEntity<any>>(
 
       const merged = parseEntity(
         entity,
-        prepareUpdate(current, removeVariantDiscriminatorFromPatch(entity, patch)),
+        injectId(
+          entity,
+          prepareUpdate(current, removeVariantDiscriminatorFromPatch(entity, patch)),
+        ),
       );
-      const update = toMongoSet(merged);
+      const update = toMongoSet(entity, merged);
 
       await getCollection().updateOne(
         { _id: merged._id } as Filter<TDocument>,
@@ -220,10 +229,54 @@ function parseEntity<TEntity extends MongoEntity<any>>(
   }
 }
 
+function getIdentityFields(schema: ZodTypeAny): string[] {
+  if (!(schema instanceof ZodObject)) return [];
+
+  return Object.entries(schema.shape).flatMap(([key, fieldSchema]) =>
+    isIdentitySchema(fieldSchema) ? [key] : [],
+  );
+}
+
+function injectId<TDocument extends { _id?: ObjectId }>(
+  entity: MongoEntity<any>,
+  document: TDocument,
+): TDocument {
+  const fields = getIdentityFields(entity.schema);
+
+  if (fields.length === 0) return document;
+
+  const id = document._id?.toString();
+  const injected: Record<string, unknown> = { ...(document as Record<string, unknown>) };
+
+  for (const field of fields) {
+    injected[field] = id;
+  }
+
+  return injected as TDocument;
+}
+
+function stripIdentityFields<TDocument>(
+  entity: MongoEntity<any>,
+  document: TDocument,
+): TDocument {
+  const fields = getIdentityFields(entity.schema);
+
+  if (fields.length === 0) return document;
+
+  const stripped: Record<string, unknown> = { ...(document as Record<string, unknown>) };
+
+  for (const field of fields) {
+    delete stripped[field];
+  }
+
+  return stripped as TDocument;
+}
+
 function toMongoSet<TDocument extends { _id?: ObjectId }>(
+  entity: MongoEntity<any>,
   document: TDocument,
 ): Partial<TDocument> {
-  const { _id: _id, ...update } = document;
+  const { _id: _id, ...update } = stripIdentityFields(entity, document);
 
   return update as Partial<TDocument>;
 }

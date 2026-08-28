@@ -7,7 +7,7 @@ export {
 export { createEntityManager, entityManager } from "./entity-manager";
 export { createMongoEntity } from "./entity";
 export { syncIndexes } from "./sync-indexes";
-export { mongoId, timestamps } from "./zod-helpers";
+export { identity, mongoId, timestamps } from "./zod-helpers";
 export { TypedMongoConnectionError, TypedMongoValidationError } from "./errors";
 
 export type { ConnectMongoOptions, TypedMongoConnection } from "./connection";
