@@ -13,6 +13,26 @@ export function mongoId() {
   ]);
 }
 
+const identitySchemas = new WeakSet<object>();
+
+export function identity() {
+  const schema = z
+    .union([z.instanceof(ObjectId), z.string()])
+    .optional()
+    .transform((value) => value as string);
+
+  identitySchemas.add(schema);
+  return schema;
+}
+
+export function isIdentitySchema(schema: unknown): boolean {
+  return (
+    typeof schema === "object" &&
+    schema !== null &&
+    identitySchemas.has(schema as object)
+  );
+}
+
 export function timestamps() {
   return {
     createdAt: z.date().optional(),
