@@ -41,6 +41,7 @@ export interface Repository<
   updateOne(filter: Filter<TDocument>, patch: TUpdateInput): Promise<TDocument | null>;
   deleteById(id: ObjectId | string): Promise<boolean>;
   deleteOne(filter: Filter<TDocument>): Promise<boolean>;
+  deleteMany(filter: Filter<TDocument>): Promise<{ deleted: number }>;
   count(filter?: Filter<TDocument>): Promise<number>;
   exists(filter: Filter<TDocument>): Promise<boolean>;
 }
@@ -91,6 +92,14 @@ export function createRepository<TEntity extends MongoEntity<any>>(
     async deleteById(id) {
       return this.deleteOne({ _id: normalizeId(id) } as unknown as Filter<TDocument>);
     },
+    async deleteMany(filter) {
+      const result = await getCollection().deleteMany(
+        scopeVariantFilter(entity, filter),
+        sessionOptions,
+      );
+
+      return { deleted: result.deletedCount };
+    },
     async deleteOne(filter) {
       const result = await getCollection().deleteOne(
         scopeVariantFilter(entity, filter),
@@ -115,7 +124,9 @@ export function createRepository<TEntity extends MongoEntity<any>>(
         .find(scopeVariantFilter(entity, filter), { ...findOptions, ...sessionOptions })
         .toArray();
 
-      return documents.map((document) => parseEntity(entity, injectId(entity, document)));
+      return documents.map((document) =>
+        parseEntity(entity, injectId(entity, document)),
+      );
     },
     async findOne(filter, findOptions = {}) {
       const document = await getCollection().findOne(
@@ -246,7 +257,9 @@ function injectId<TDocument extends { _id?: ObjectId }>(
   if (fields.length === 0) return document;
 
   const id = document._id?.toString();
-  const injected: Record<string, unknown> = { ...(document as Record<string, unknown>) };
+  const injected: Record<string, unknown> = {
+    ...(document as Record<string, unknown>),
+  };
 
   for (const field of fields) {
     injected[field] = id;
@@ -263,7 +276,9 @@ function stripIdentityFields<TDocument>(
 
   if (fields.length === 0) return document;
 
-  const stripped: Record<string, unknown> = { ...(document as Record<string, unknown>) };
+  const stripped: Record<string, unknown> = {
+    ...(document as Record<string, unknown>),
+  };
 
   for (const field of fields) {
     delete stripped[field];
