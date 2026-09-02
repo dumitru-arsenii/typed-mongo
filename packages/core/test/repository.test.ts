@@ -112,7 +112,11 @@ describe("repository", () => {
 
   it("deleteMany only removes documents matching the filter", async () => {
     const repository = entityManager.repo(UserEntity);
-    await repository.create({ email: "admin@example.com", name: "Admin", role: "admin" });
+    await repository.create({
+      email: "admin@example.com",
+      name: "Admin",
+      role: "admin",
+    });
     await repository.create({ email: "user1@example.com", name: "User One" });
     await repository.create({ email: "user2@example.com", name: "User Two" });
 
@@ -155,9 +159,9 @@ describe("repository", () => {
     ]);
 
     expect(users).toHaveLength(2);
-    expect(users[0]._id).toBeInstanceOf(ObjectId);
-    expect(users[1]._id).toBeInstanceOf(ObjectId);
-    expect(users[0].role).toBe("user");
+    expect(users[0]?._id).toBeInstanceOf(ObjectId);
+    expect(users[1]?._id).toBeInstanceOf(ObjectId);
+    expect(users[0]?.role).toBe("user");
     await expect(repository.count()).resolves.toBe(2);
   });
 
@@ -192,13 +196,17 @@ describe("repository", () => {
 
   it("findMany returns only matching documents when filtered", async () => {
     const repository = entityManager.repo(UserEntity);
-    await repository.create({ email: "admin@example.com", name: "Admin", role: "admin" });
+    await repository.create({
+      email: "admin@example.com",
+      name: "Admin",
+      role: "admin",
+    });
     await repository.create({ email: "user@example.com", name: "User" });
 
     const admins = await repository.findMany({ role: "admin" });
 
     expect(admins).toHaveLength(1);
-    expect(admins[0].email).toBe("admin@example.com");
+    expect(admins[0]?.email).toBe("admin@example.com");
   });
 
   it("findMany returns an empty array when no documents match", async () => {
@@ -240,9 +248,9 @@ describe("repository", () => {
     );
 
     expect(updated).toMatchObject({ name: "Johnny", email: "john@example.com" });
-    await expect(repository.findOne({ email: "john@example.com" })).resolves.toMatchObject(
-      { name: "Johnny" },
-    );
+    await expect(
+      repository.findOne({ email: "john@example.com" }),
+    ).resolves.toMatchObject({ name: "Johnny" });
   });
 
   it("count returns 0 when the collection is empty", async () => {
@@ -252,7 +260,11 @@ describe("repository", () => {
 
   it("count returns only documents matching the filter", async () => {
     const repository = entityManager.repo(UserEntity);
-    await repository.create({ email: "admin@example.com", name: "Admin", role: "admin" });
+    await repository.create({
+      email: "admin@example.com",
+      name: "Admin",
+      role: "admin",
+    });
     await repository.create({ email: "user@example.com", name: "User" });
 
     await expect(repository.count({ role: "admin" })).resolves.toBe(1);
@@ -261,8 +273,8 @@ describe("repository", () => {
 
   it("exists returns false when no document matches", async () => {
     const repository = entityManager.repo(UserEntity);
-    await expect(
-      repository.exists({ email: "nonexistent@example.com" }),
-    ).resolves.toBe(false);
+    await expect(repository.exists({ email: "nonexistent@example.com" })).resolves.toBe(
+      false,
+    );
   });
 });
