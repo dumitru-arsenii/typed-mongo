@@ -2,14 +2,9 @@ import { ObjectId } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import {
-  createMongoEntity,
-  entityManager,
-  mongoId,
-  timestamps,
-  type EntityType,
-} from "../src";
+import { createMongoEntity, entityManager, mongoId, type EntityType } from "../src";
 import { clearMongo, startMongo, stopMongo } from "./helpers";
+import { timestamps } from "@typed-mongo/zod";
 
 const SectionArtifactSchema = z.object({
   kind: z.literal("section"),
