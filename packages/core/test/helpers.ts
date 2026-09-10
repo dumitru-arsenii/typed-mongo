@@ -8,8 +8,8 @@ import {
   getMongoConnection,
   hasMongoConnection,
   mongoId,
-  timestamps,
 } from "../src";
+import { timestamps } from "@typed-mongo/zod";
 
 export const UserEntity = createMongoEntity({
   collection: "users",

@@ -11,7 +11,6 @@ import {
 import { ZodError, ZodObject, type TypeOf, type ZodTypeAny } from "zod";
 
 import { TypedMongoValidationError } from "./errors";
-import { isIdentitySchema } from "./zod-helpers";
 import type {
   EntityInput,
   EntityType,
@@ -19,6 +18,7 @@ import type {
   MongoEntity,
   MongoVariantEntity,
 } from "./entity";
+import { isIdentitySchema } from "@typed-mongo/zod";
 
 export interface Repository<
   TDocument extends { _id?: ObjectId },
