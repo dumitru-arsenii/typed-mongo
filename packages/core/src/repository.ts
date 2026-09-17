@@ -200,13 +200,13 @@ export function normalizeId(id: ObjectId | string): ObjectId {
 function prepareInsert<TDocument extends { _id?: ObjectId }>(
   input: Partial<TDocument>,
 ): Partial<TDocument> {
-  const now = new Date();
+  const now = Date.now();
 
   return {
     _id: input._id ?? new ObjectId(),
     ...input,
-    createdAt: (input as { createdAt?: Date }).createdAt ?? now,
-    updatedAt: (input as { updatedAt?: Date }).updatedAt ?? now,
+    createdAt: (input as { createdAt?: number }).createdAt ?? now,
+    updatedAt: (input as { updatedAt?: number }).updatedAt ?? now,
   } as Partial<TDocument>;
 }
 
@@ -218,7 +218,7 @@ function prepareUpdate<TDocument extends { _id?: ObjectId }>(
     ...current,
     ...patch,
     _id: current._id,
-    updatedAt: new Date(),
+    updatedAt: Date.now(),
   } as TDocument;
 }
 

@@ -25,8 +25,15 @@ describe("repository", () => {
 
     expect(user._id).toBeInstanceOf(ObjectId);
     expect(user.role).toBe("user");
-    expect(user.createdAt).toBeInstanceOf(Date);
-    expect(user.updatedAt).toBeInstanceOf(Date);
+    expect(typeof user.createdAt).toBe("number");
+    expect(typeof user.updatedAt).toBe("number");
+
+    const storedUser = await entityManager
+      .repo(UserEntity)
+      .collection.findOne({ _id: user._id });
+
+    expect(typeof storedUser?.createdAt).toBe("number");
+    expect(typeof storedUser?.updatedAt).toBe("number");
   });
 
   it("rejects invalid create input", async () => {
@@ -63,11 +70,16 @@ describe("repository", () => {
     await expect(repository.updateById(user._id, { name: "" })).rejects.toBeInstanceOf(
       TypedMongoValidationError,
     );
-    await expect(
-      repository.updateById(user._id, { name: "Johnny" }),
-    ).resolves.toMatchObject({
-      name: "Johnny",
-    });
+    const updatedUser = await repository.updateById(user._id, { name: "Johnny" });
+
+    expect(updatedUser).toMatchObject({ name: "Johnny" });
+    expect(typeof updatedUser?.createdAt).toBe("number");
+    expect(typeof updatedUser?.updatedAt).toBe("number");
+
+    const storedUser = await repository.collection.findOne({ _id: user._id });
+
+    expect(typeof storedUser?.createdAt).toBe("number");
+    expect(typeof storedUser?.updatedAt).toBe("number");
   });
 
   it("supports count, exists, delete, and index sync", async () => {

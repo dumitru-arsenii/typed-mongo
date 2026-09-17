@@ -13,8 +13,8 @@ export const usersCollection = defineCollection({
     _id: z.string(),
     email: z.string().email(),
     name: z.string(),
-    createdAt: z.date(),
-    updatedAt: z.date(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
   }),
 });
 ```
