@@ -22,7 +22,7 @@ export function isIdentitySchema(schema: unknown): boolean {
 
 export function timestamps() {
   return {
-    createdAt: z.date().optional(),
-    updatedAt: z.date().optional(),
+    createdAt: z.number().optional(),
+    updatedAt: z.number().optional(),
   };
 }

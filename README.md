@@ -52,8 +52,8 @@ export const usersCollection = defineCollection({
     email: z.string().email(),
     name: z.string(),
     role: z.enum(["admin", "user"]),
-    createdAt: z.date(),
-    updatedAt: z.date(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
   }),
   indexes: [{ keys: { email: 1 }, unique: true }],
 });
@@ -91,8 +91,8 @@ await UserRepository.insertOne({
   email: "ada@example.com",
   name: "Ada",
   role: "admin",
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 });
 
 await UserRepository.updateMany({ role: "admin" }, { role: "user" });
@@ -123,8 +123,8 @@ const userEntity = User.create({
   email: "grace@example.com",
   name: "Grace",
   role: "admin",
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: Date.now(),
+  updatedAt: Date.now(),
 });
 
 userEntity.name = "Grace Hopper";
