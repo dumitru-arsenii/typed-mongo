@@ -230,8 +230,14 @@ function parseEntity<TEntity extends MongoEntity<any>>(
     return entity.parse(input) as EntityType<TEntity>;
   } catch (error) {
     if (error instanceof ZodError) {
+      const issueDetails = error.issues
+        .map((issue) => {
+          const path = issue.path.length > 0 ? issue.path.join(".") : "(root)";
+          return `  - ${path}: ${issue.message}`;
+        })
+        .join("\n");
       throw new TypedMongoValidationError(
-        `Document failed validation for collection "${entity.collection}".`,
+        `Document failed validation for collection "${entity.collection}":\n${issueDetails}`,
         error.issues,
       );
     }
