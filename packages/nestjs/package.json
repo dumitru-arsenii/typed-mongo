@@ -1,6 +1,6 @@
 {
   "name": "@typed-mongo/nestjs",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "NestJS repository injection and get-by-id pipe helpers for typed-mongo.",
   "type": "module",

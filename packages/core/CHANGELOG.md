@@ -1,5 +1,13 @@
 # @typed-mongo/core
 
+## 0.1.1
+
+### Patch Changes
+
+- Require identity values and normalize MongoDB ObjectId identities to strings.
+- Updated dependencies
+  - @typed-mongo/zod@0.0.3
+
 ## 0.1.0
 
 ### Minor Changes
