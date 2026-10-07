@@ -11,6 +11,26 @@ test("identity requires a string", () => {
   );
 });
 
+test("identity converts Mongo ObjectId instances to strings", () => {
+  class ObjectId {
+    toString() {
+      return "507f1f77bcf86cd799439011";
+    }
+  }
+
+  expect(identity().parse(new ObjectId())).toBe("507f1f77bcf86cd799439011");
+});
+
+test("identity rejects ObjectId-shaped values without toString", () => {
+  const objectIdPrototype = Object.create(null) as {
+    constructor: { name: string };
+  };
+  objectIdPrototype.constructor = { name: "ObjectId" };
+  const objectIdWithoutToString = Object.create(objectIdPrototype);
+
+  expect(identity().safeParse(objectIdWithoutToString).success).toBe(false);
+});
+
 test("identity fields cannot be omitted", () => {
   const schema = z.object({ userId: identity() });
 
