@@ -3,10 +3,7 @@ import { z } from "zod";
 const identitySchemas = new WeakSet<object>();
 
 export function identity() {
-  const schema = z
-    .string()
-    .optional()
-    .transform((value) => value as string);
+  const schema = z.string().transform((value) => value);
 
   identitySchemas.add(schema);
   return schema;
