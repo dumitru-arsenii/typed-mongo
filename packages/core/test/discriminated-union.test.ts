@@ -2,7 +2,13 @@ import { ObjectId } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { createMongoEntity, entityManager, mongoId, type EntityType } from "../src";
+import {
+  createMongoEntity,
+  entityManager,
+  getMongoConnection,
+  mongoId,
+  type EntityType,
+} from "../src";
 import { clearMongo, startMongo, stopMongo } from "./helpers";
 import { identity, timestamps } from "@typed-mongo/zod";
 
@@ -114,19 +120,41 @@ describe("zod discriminated union entities", () => {
     const repository = entityManager.repo(IdentityPageArtifactsEntity);
     const _id = new ObjectId();
 
-    await repository.collection.insertOne({
+    await getMongoConnection().db.collection("identity_page_artifacts").insertOne({
       _id,
       kind: "section",
       pageId: new ObjectId(),
       sectionKey: "hero",
-    } as never);
+    });
 
-    await expect(repository.findOne({ _id } as never)).resolves.toMatchObject({
+    await expect(repository.findOne({ _id })).resolves.toMatchObject({
       _id,
       id: _id.toString(),
       kind: "section",
       sectionKey: "hero",
     });
+  });
+
+  it("creates union entities without id and strips id before persistence", async () => {
+    const repository = entityManager.repo(IdentityPageArtifactsEntity);
+    const created = await repository.create({
+      kind: "section",
+      pageId: new ObjectId(),
+      sectionKey: "created",
+    });
+
+    expect(created.id).toBe(created._id.toString());
+
+    const stored = await getMongoConnection().db
+      .collection("identity_page_artifacts")
+      .findOne({ _id: created._id });
+
+    expect(stored).toMatchObject({
+      _id: created._id,
+      kind: "section",
+      sectionKey: "created",
+    });
+    expect(stored).not.toHaveProperty("id");
   });
 
   it("injects the discriminator for variant creates", async () => {

@@ -1,7 +1,7 @@
 import { ObjectId, type IndexDescription } from "mongodb";
 import { z } from "zod";
 
-type GeneratedKeys = "_id" | "createdAt" | "updatedAt";
+type GeneratedKeys = "_id" | "id" | "createdAt" | "updatedAt";
 type StringDiscriminatorValue<TSchema extends z.ZodTypeAny, TKey extends string> =
   z.infer<TSchema> extends Record<TKey, infer TValue> ? Extract<TValue, string> : never;
 

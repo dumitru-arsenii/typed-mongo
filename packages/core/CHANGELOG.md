@@ -1,10 +1,12 @@
 # @typed-mongo/core
 
-## 0.1.4
+## 0.1.5
 
 ### Patch Changes
 
 - Inject typed-mongo identity fields when parsing Zod discriminated-union entity documents.
+- Treat `id` as a generated repository key, alongside `_id` and timestamps.
+- No application-side `id` field or database migration is required.
 
 ## 0.1.1
 

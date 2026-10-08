@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   createMongoEntity,
   entityManager,
+  getMongoConnection,
   syncIndexes,
   TypedMongoValidationError,
 } from "../src";
@@ -75,13 +76,29 @@ describe("repository", () => {
     });
   });
 
+  it("creates identity entities without id and strips id before persistence", async () => {
+    const repository = entityManager.repo(IdentityObjectEntity);
+    const created = await repository.create({ name: "Created object" });
+
+    expect(created.id).toBe(created._id.toString());
+
+    const stored = await getMongoConnection().db
+      .collection("identity_objects")
+      .findOne({ _id: created._id });
+
+    expect(stored).toMatchObject({ _id: created._id, name: "Created object" });
+    expect(stored).not.toHaveProperty("id");
+  });
+
   it("injects an identity field for a plain object document read from Mongo", async () => {
     const repository = entityManager.repo(IdentityObjectEntity);
     const _id = new ObjectId();
 
-    await repository.collection.insertOne({ _id, name: "Plain object" } as never);
+    await getMongoConnection().db
+      .collection("identity_objects")
+      .insertOne({ _id, name: "Plain object" });
 
-    await expect(repository.findOne({ _id } as never)).resolves.toMatchObject({
+    await expect(repository.findOne({ _id })).resolves.toMatchObject({
       _id,
       id: _id.toString(),
       name: "Plain object",
