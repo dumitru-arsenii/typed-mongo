@@ -15,14 +15,17 @@ export const TYPED_MONGO_REPOSITORY_FACTORY = Symbol.for(
   "@typed-mongo/nestjs:repository-factory",
 );
 
-export type TypedMongoRepositoryRecord = Record<
-  string,
-  Pick<Repository<any>, "findById">
->;
+type FindByIdRepository<TDocument> = {
+  findById(
+    id: Parameters<Repository<MongoEntity>["findById"]>[0],
+  ): Promise<TDocument | null>;
+};
+
+export type TypedMongoRepositoryRecord = Record<string, FindByIdRepository<unknown>>;
 
 export type TypedMongoNestRepositoryFactory = (
   entity: MongoEntity,
-) => Promise<Pick<Repository<any>, "findById">> | Pick<Repository<any>, "findById">;
+) => Promise<FindByIdRepository<unknown>> | FindByIdRepository<unknown>;
 
 export interface TypedMongoRootModuleOptions {
   collections?: readonly MongoEntity[] | undefined;
@@ -49,7 +52,7 @@ export function InjectTypedMongoRepository(
 
 export function createTypedMongoRepositoryProvider<TDocument>(
   collectionName: string,
-  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">,
+  repository: FindByIdRepository<TDocument>,
 ): Provider {
   return {
     provide: getTypedMongoRepositoryToken(collectionName),
@@ -70,7 +73,7 @@ export interface CreateGetByIdPipeOptions<TDocument, TId = string> {
   collectionName?: string;
   mapId?: (value: unknown, metadata: ArgumentMetadata) => TId | Promise<TId>;
   notFoundMessage?: string;
-  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">;
+  repository: FindByIdRepository<TDocument>;
 }
 
 export class TypedMongoGetByIdPipe<TDocument, TId = string> implements PipeTransform<
@@ -85,7 +88,7 @@ export class TypedMongoGetByIdPipe<TDocument, TId = string> implements PipeTrans
       : (value as TId);
 
     const document = (await this.options.repository.findById(
-      id as Parameters<Repository<any>["findById"]>[0],
+      id as Parameters<Repository<MongoEntity>["findById"]>[0],
     )) as TDocument | null;
 
     if (document === null) {

@@ -9,6 +9,7 @@ import {
   syncIndexes,
   TypedMongoValidationError,
 } from "../src";
+import type { Repository } from "../src";
 import { clearMongo, startMongo, stopMongo, UserEntity } from "./helpers";
 import { identity } from "@typed-mongo/zod";
 
@@ -77,13 +78,14 @@ describe("repository", () => {
   });
 
   it("creates identity entities without id and strips id before persistence", async () => {
-    const repository = entityManager.repo(IdentityObjectEntity);
+    const repository: Repository<typeof IdentityObjectEntity> =
+      entityManager.repo(IdentityObjectEntity);
     const created = await repository.create({ name: "Created object" });
 
     expect(created.id).toBe(created._id.toString());
 
-    const stored = await getMongoConnection().db
-      .collection("identity_objects")
+    const stored = await getMongoConnection()
+      .db.collection("identity_objects")
       .findOne({ _id: created._id });
 
     expect(stored).toMatchObject({ _id: created._id, name: "Created object" });
@@ -94,8 +96,8 @@ describe("repository", () => {
     const repository = entityManager.repo(IdentityObjectEntity);
     const _id = new ObjectId();
 
-    await getMongoConnection().db
-      .collection("identity_objects")
+    await getMongoConnection()
+      .db.collection("identity_objects")
       .insertOne({ _id, name: "Plain object" });
 
     await expect(repository.findOne({ _id })).resolves.toMatchObject({

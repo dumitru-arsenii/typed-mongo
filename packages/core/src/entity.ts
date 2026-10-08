@@ -5,6 +5,12 @@ type GeneratedKeys = "_id" | "id" | "createdAt" | "updatedAt";
 type StringDiscriminatorValue<TSchema extends z.ZodTypeAny, TKey extends string> =
   z.infer<TSchema> extends Record<TKey, infer TValue> ? Extract<TValue, string> : never;
 
+// Keep entity types nominal so repository APIs cannot accept arbitrary objects.
+const typedMongoEntityBrand: unique symbol = Symbol("typedMongoEntity");
+type TypedMongoEntityBrand = {
+  readonly [typedMongoEntityBrand]: true;
+};
+
 export type MongoEntityIndex = Omit<IndexDescription, "key"> & {
   key?: IndexDescription["key"];
   keys?: IndexDescription["key"];
@@ -16,13 +22,14 @@ export type MongoEntityOptions<TSchema extends z.ZodTypeAny> = {
   indexes?: MongoEntityIndex[];
 };
 
-export type BaseMongoEntity<TSchema extends z.ZodTypeAny = z.ZodTypeAny> = {
-  collection: string;
-  schema: TSchema;
-  indexes: MongoEntityIndex[];
-  parse(input: unknown): z.infer<TSchema>;
-  safeParse(input: unknown): z.SafeParseReturnType<unknown, z.infer<TSchema>>;
-};
+export type BaseMongoEntity<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
+  TypedMongoEntityBrand & {
+    collection: string;
+    schema: TSchema;
+    indexes: MongoEntityIndex[];
+    parse(input: unknown): z.infer<TSchema>;
+    safeParse(input: unknown): z.SafeParseReturnType<unknown, z.infer<TSchema>>;
+  };
 
 export type NormalMongoEntity<TSchema extends z.ZodTypeAny = z.ZodTypeAny> =
   BaseMongoEntity<TSchema> & {
@@ -131,26 +138,32 @@ export function createMongoEntity<TSchema extends z.ZodTypeAny>(
   options: MongoEntityOptions<TSchema>,
 ): MongoEntity<TSchema> {
   if (isDiscriminatedUnion(options.schema)) {
-    return createDiscriminatedEntity(
-      options as unknown as MongoEntityOptions<z.ZodDiscriminatedUnion<any, any>>,
-    ) as unknown as MongoEntity<TSchema>;
+    return createDiscriminatedEntity({
+      ...options,
+      schema: options.schema,
+    });
   }
 
-  const entitySchema = withMongoId(options.schema as unknown as z.SomeZodObject);
+  if (!(options.schema instanceof z.ZodObject)) {
+    throw new Error("Mongo entity schema must be a Zod object or discriminated union.");
+  }
 
-  return {
+  const entitySchema = withMongoId(options.schema);
+
+  const entity: NormalMongoEntity<TSchema> = {
+    [typedMongoEntityBrand]: true,
     collection: options.collection,
     indexes: options.indexes ?? [],
+    schema: options.schema,
     parse(input) {
       return entitySchema.parse(input);
     },
     safeParse(input) {
       return entitySchema.safeParse(input);
     },
-    get schema() {
-      return entitySchema as unknown as TSchema;
-    },
   };
+
+  return entity;
 }
 
 function createDiscriminatedEntity<TSchema extends z.ZodDiscriminatedUnion<any, any>>(
@@ -162,24 +175,29 @@ function createDiscriminatedEntity<TSchema extends z.ZodDiscriminatedUnion<any, 
       const discriminatorValue = getDiscriminatorValue(option, discriminator);
       const schema = withMongoId(option);
 
+      const variant: MongoVariantEntity<
+        typeof option,
+        typeof discriminator,
+        string
+      > = {
+        [typedMongoEntityBrand]: true,
+        kind: "variant",
+        collection: options.collection,
+        indexes: [],
+        discriminator,
+        discriminatorValue,
+        schema: option,
+        parse(input) {
+          return schema.parse(input);
+        },
+        safeParse(input) {
+          return schema.safeParse(input);
+        },
+      };
+
       return [
         discriminatorValue,
-        {
-          kind: "variant",
-          collection: options.collection,
-          indexes: [],
-          discriminator,
-          discriminatorValue,
-          parse(input: unknown) {
-            return schema.parse(input);
-          },
-          safeParse(input: unknown) {
-            return schema.safeParse(input);
-          },
-          get schema() {
-            return schema as unknown as typeof option;
-          },
-        } satisfies MongoVariantEntity<typeof option, typeof discriminator, string>,
+        variant,
       ] as const;
     },
   );
@@ -197,28 +215,33 @@ function createDiscriminatedEntity<TSchema extends z.ZodDiscriminatedUnion<any, 
     ],
   );
 
-  return {
+  const entity: MongoDiscriminatedEntity<
+    TSchema,
+    MongoDiscriminatedVariants<TSchema>
+  > = {
+    [typedMongoEntityBrand]: true,
     kind: "discriminated",
     collection: options.collection,
     indexes: options.indexes ?? [],
     discriminator,
     variants,
+    schema: options.schema,
     parse(input) {
       return entitySchema.parse(input);
     },
     safeParse(input) {
       return entitySchema.safeParse(input);
     },
-    get schema() {
-      return entitySchema as unknown as TSchema;
-    },
   };
+
+  return entity;
 }
 
-function withMongoId<TSchema extends z.SomeZodObject>(schema: TSchema): TSchema {
+function withMongoId<TSchema extends z.SomeZodObject>(schema: TSchema): TSchema;
+function withMongoId(schema: z.SomeZodObject): z.SomeZodObject {
   return schema.extend({
     _id: z.instanceof(ObjectId),
-  }) as unknown as TSchema;
+  });
 }
 
 function isDiscriminatedUnion(

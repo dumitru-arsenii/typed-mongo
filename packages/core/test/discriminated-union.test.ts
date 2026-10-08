@@ -9,6 +9,7 @@ import {
   mongoId,
   type EntityType,
 } from "../src";
+import type { ActiveRecordModel, Repository } from "../src";
 import { clearMongo, startMongo, stopMongo } from "./helpers";
 import { identity, timestamps } from "@typed-mongo/zod";
 
@@ -87,6 +88,19 @@ describe("zod discriminated union entities", () => {
     expect(PageArtifactsEntity.variants.seo.discriminatorValue).toBe("seo");
   });
 
+  it("supports discriminated entities as repository and model type parameters", () => {
+    const repository: Repository<typeof PageArtifactsEntity> =
+      entityManager.repo(PageArtifactsEntity);
+    const model: ActiveRecordModel<typeof PageArtifactsEntity> =
+      entityManager.active(PageArtifactsEntity);
+    const sectionRepository: Repository<typeof PageArtifactsEntity.variants.section> =
+      entityManager.repo(PageArtifactsEntity.variants.section);
+
+    expect(repository).toBeDefined();
+    expect(model).toBeDefined();
+    expect(sectionRepository).toBeDefined();
+  });
+
   it("lets the base repo create all variants", async () => {
     const pageId = new ObjectId();
     const repo = entityManager.repo(PageArtifactsEntity);
@@ -145,8 +159,8 @@ describe("zod discriminated union entities", () => {
 
     expect(created.id).toBe(created._id.toString());
 
-    const stored = await getMongoConnection().db
-      .collection("identity_page_artifacts")
+    const stored = await getMongoConnection()
+      .db.collection("identity_page_artifacts")
       .findOne({ _id: created._id });
 
     expect(stored).toMatchObject({

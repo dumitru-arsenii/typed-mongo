@@ -1,15 +1,20 @@
-import type { Repository } from "@typed-mongo/core";
+import type { MongoEntity, Repository } from "@typed-mongo/core";
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 
 export type TypedMongoExpressAttachTarget = "both" | "locals" | "request";
 export type TypedMongoExpressNotFoundMode = "next" | "response";
+type RepositoryId = Parameters<Repository<MongoEntity>["findById"]>[0];
+
+type FindByIdRepository<TDocument> = {
+  findById(id: RepositoryId): Promise<TDocument | null>;
+};
 
 export type TypedMongoExpressRequest<TAttachTo extends string, TDocument> = Request &
   Record<TAttachTo, TDocument>;
 
 export interface CreateGetByIdMiddlewareOptions<
   TDocument,
-  TId extends Parameters<Repository<any>["findById"]>[0] = string,
+  TId extends RepositoryId = string,
   TAttachTo extends string = string,
 > {
   attach?: TypedMongoExpressAttachTarget;
@@ -18,13 +23,13 @@ export interface CreateGetByIdMiddlewareOptions<
   mapId?: (rawId: string, request: Request) => TId | Promise<TId>;
   notFound?: TypedMongoExpressNotFoundMode;
   param: string;
-  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">;
+  repository: FindByIdRepository<TDocument>;
   statusCode?: number;
 }
 
 export function createGetByIdMiddleware<
   TDocument,
-  TId extends Parameters<Repository<any>["findById"]>[0] = string,
+  TId extends RepositoryId = string,
   const TAttachTo extends string = string,
 >(options: CreateGetByIdMiddlewareOptions<TDocument, TId, TAttachTo>): RequestHandler {
   return async (request: Request, response: Response, next: NextFunction) => {

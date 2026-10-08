@@ -1,5 +1,11 @@
 # @typed-mongo/core
 
+## 0.1.6
+
+### Patch Changes
+
+- Require branded Typed Mongo entities in repository and ActiveRecord APIs, and keep adapter repository types aligned with the stricter Core contracts.
+
 ## 0.1.5
 
 ### Patch Changes

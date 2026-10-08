@@ -8,13 +8,7 @@ import {
   type OptionalUnlessRequiredId,
   type UpdateFilter,
 } from "mongodb";
-import {
-  ZodDiscriminatedUnion,
-  ZodError,
-  ZodObject,
-  type TypeOf,
-  type ZodTypeAny,
-} from "zod";
+import { ZodDiscriminatedUnion, ZodError, ZodObject, type ZodTypeAny } from "zod";
 
 import { TypedMongoValidationError } from "./errors";
 import type {
@@ -23,37 +17,40 @@ import type {
   EntityUpdate,
   MongoEntity,
   MongoVariantEntity,
+  NormalMongoEntity,
 } from "./entity";
 import { isIdentitySchema } from "@typed-mongo/zod";
 
-export interface Repository<
-  TDocument extends { _id?: ObjectId },
-  TCreateInput = Partial<TDocument>,
-  TUpdateInput = Partial<TDocument>,
-> {
-  collection: Collection<TDocument>;
-  create(input: TCreateInput): Promise<TDocument>;
-  insertMany(inputs: TCreateInput[]): Promise<TDocument[]>;
-  findById(id: ObjectId | string): Promise<TDocument | null>;
+export interface Repository<TEntity extends MongoEntity<any>> {
+  collection: Collection<EntityType<TEntity>>;
+  create(input: EntityInput<TEntity>): Promise<EntityType<TEntity>>;
+  insertMany(inputs: EntityInput<TEntity>[]): Promise<EntityType<TEntity>[]>;
+  findById(id: ObjectId | string): Promise<EntityType<TEntity> | null>;
   findOne(
-    filter: Filter<TDocument>,
-    options?: FindOptions<TDocument>,
-  ): Promise<TDocument | null>;
+    filter: Filter<EntityType<TEntity>>,
+    options?: FindOptions<EntityType<TEntity>>,
+  ): Promise<EntityType<TEntity> | null>;
   findMany(
-    filter?: Filter<TDocument>,
-    options?: FindOptions<TDocument>,
-  ): Promise<TDocument[]>;
-  updateById(id: ObjectId | string, patch: TUpdateInput): Promise<TDocument | null>;
-  updateOne(filter: Filter<TDocument>, patch: TUpdateInput): Promise<TDocument | null>;
+    filter?: Filter<EntityType<TEntity>>,
+    options?: FindOptions<EntityType<TEntity>>,
+  ): Promise<EntityType<TEntity>[]>;
+  updateById(
+    id: ObjectId | string,
+    patch: EntityUpdate<TEntity>,
+  ): Promise<EntityType<TEntity> | null>;
+  updateOne(
+    filter: Filter<EntityType<TEntity>>,
+    patch: EntityUpdate<TEntity>,
+  ): Promise<EntityType<TEntity> | null>;
   deleteById(id: ObjectId | string): Promise<boolean>;
-  deleteOne(filter: Filter<TDocument>): Promise<boolean>;
-  deleteMany(filter: Filter<TDocument>): Promise<{ deleted: number }>;
-  count(filter?: Filter<TDocument>): Promise<number>;
-  exists(filter: Filter<TDocument>): Promise<boolean>;
+  deleteOne(filter: Filter<EntityType<TEntity>>): Promise<boolean>;
+  deleteMany(filter: Filter<EntityType<TEntity>>): Promise<{ deleted: number }>;
+  count(filter?: Filter<EntityType<TEntity>>): Promise<number>;
+  exists(filter: Filter<EntityType<TEntity>>): Promise<boolean>;
 }
 
 export type RepositoryOf<TSchema extends ZodTypeAny> = Repository<
-  TypeOf<TSchema> & { _id: ObjectId }
+  NormalMongoEntity<TSchema>
 >;
 
 export type CreateRepositoryOptions<TEntity extends MongoEntity<any>> = {
@@ -64,7 +61,7 @@ export type CreateRepositoryOptions<TEntity extends MongoEntity<any>> = {
 
 export function createRepository<TEntity extends MongoEntity<any>>(
   options: CreateRepositoryOptions<TEntity>,
-): Repository<EntityType<TEntity>, EntityInput<TEntity>, EntityUpdate<TEntity>> {
+): Repository<TEntity> {
   type TDocument = EntityType<TEntity>;
 
   const getCollection = () =>
@@ -260,9 +257,7 @@ function getIdentityFields(schema: ZodTypeAny): string[] {
   if (schema instanceof ZodDiscriminatedUnion) {
     const options = schema.options as ZodObject<any>[];
 
-    return [
-      ...new Set(options.flatMap((option) => getObjectIdentityFields(option))),
-    ];
+    return [...new Set(options.flatMap((option) => getObjectIdentityFields(option)))];
   }
 
   return [];

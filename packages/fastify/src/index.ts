@@ -1,7 +1,12 @@
-import type { Repository } from "@typed-mongo/core";
+import type { MongoEntity, Repository } from "@typed-mongo/core";
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 
 export type TypedMongoFastifyNotFoundMode = "reply" | "throw";
+type RepositoryId = Parameters<Repository<MongoEntity>["findById"]>[0];
+
+type FindByIdRepository<TDocument> = {
+  findById(id: RepositoryId): Promise<TDocument | null>;
+};
 
 export type TypedMongoFastifyRequest<
   TAttachTo extends string,
@@ -10,7 +15,7 @@ export type TypedMongoFastifyRequest<
 
 export interface CreateGetByIdPreHandlerOptions<
   TDocument,
-  TId extends Parameters<Repository<any>["findById"]>[0] = string,
+  TId extends RepositoryId = string,
   TAttachTo extends string = string,
 > {
   attachTo: TAttachTo;
@@ -18,13 +23,13 @@ export interface CreateGetByIdPreHandlerOptions<
   mapId?: (rawId: string, request: FastifyRequest) => TId | Promise<TId>;
   notFound?: TypedMongoFastifyNotFoundMode;
   param: string;
-  repository: Pick<Repository<TDocument & { _id?: any }>, "findById">;
+  repository: FindByIdRepository<TDocument>;
   statusCode?: number;
 }
 
 export function createGetByIdPreHandler<
   TDocument,
-  TId extends Parameters<Repository<any>["findById"]>[0] = string,
+  TId extends RepositoryId = string,
   const TAttachTo extends string = string,
 >(
   options: CreateGetByIdPreHandlerOptions<TDocument, TId, TAttachTo>,

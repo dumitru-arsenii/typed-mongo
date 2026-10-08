@@ -1,8 +1,8 @@
 import { ObjectId, type Filter } from "mongodb";
 
-import type { EntityInput, EntityType, EntityUpdate, MongoEntity } from "./entity";
+import type { EntityInput, EntityType, MongoEntity, NormalMongoEntity } from "./entity";
 import type { Repository } from "./repository";
-import type { TypeOf, ZodTypeAny } from "zod";
+import type { ZodTypeAny } from "zod";
 
 export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
   data: TDocument;
@@ -14,33 +14,34 @@ export interface ActiveRecordDocument<TDocument extends { _id?: ObjectId }> {
   isDirty(): boolean;
 }
 
-export interface ActiveRecordModel<
-  TDocument extends { _id?: ObjectId },
-  TCreateInput = Partial<TDocument>,
-> {
-  create(input: TCreateInput): Promise<ActiveRecordDocument<TDocument>>;
-  build(input: TCreateInput): ActiveRecordDocument<TDocument>;
-  findById(id: ObjectId | string): Promise<ActiveRecordDocument<TDocument> | null>;
-  findOne(filter: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument> | null>;
-  findMany(filter?: Filter<TDocument>): Promise<ActiveRecordDocument<TDocument>[]>;
+export interface ActiveRecordModel<TEntity extends MongoEntity<any>> {
+  create(
+    input: EntityInput<TEntity>,
+  ): Promise<ActiveRecordDocument<EntityType<TEntity>>>;
+  build(input: EntityInput<TEntity>): ActiveRecordDocument<EntityType<TEntity>>;
+  findById(
+    id: ObjectId | string,
+  ): Promise<ActiveRecordDocument<EntityType<TEntity>> | null>;
+  findOne(
+    filter: Filter<EntityType<TEntity>>,
+  ): Promise<ActiveRecordDocument<EntityType<TEntity>> | null>;
+  findMany(
+    filter?: Filter<EntityType<TEntity>>,
+  ): Promise<ActiveRecordDocument<EntityType<TEntity>>[]>;
 }
 
 export type ActiveRecordModelOf<TSchema extends ZodTypeAny> = ActiveRecordModel<
-  TypeOf<TSchema> & { _id: ObjectId }
+  NormalMongoEntity<TSchema>
 >;
 
 export type CreateActiveRecordModelOptions<TEntity extends MongoEntity<any>> = {
   entity: TEntity;
-  repository: Repository<
-    EntityType<TEntity>,
-    EntityInput<TEntity>,
-    EntityUpdate<TEntity>
-  >;
+  repository: Repository<TEntity>;
 };
 
 export function createActiveRecordModel<TEntity extends MongoEntity<any>>(
   options: CreateActiveRecordModelOptions<TEntity>,
-): ActiveRecordModel<EntityType<TEntity>, EntityInput<TEntity>> {
+): ActiveRecordModel<TEntity> {
   type TDocument = EntityType<TEntity>;
 
   const wrap = (
@@ -79,14 +80,14 @@ export function createActiveRecordModel<TEntity extends MongoEntity<any>>(
 }
 
 class DefaultActiveRecordDocument<
-  TDocument extends { _id?: ObjectId },
-> implements ActiveRecordDocument<TDocument> {
-  private snapshot: TDocument | null;
+  TEntity extends MongoEntity<any>,
+> implements ActiveRecordDocument<EntityType<TEntity>> {
+  private snapshot: EntityType<TEntity> | null;
 
   constructor(
-    private readonly repository: Repository<TDocument, unknown, unknown>,
-    public data: TDocument,
-    snapshot: TDocument | null,
+    private readonly repository: Repository<TEntity>,
+    public data: EntityType<TEntity>,
+    snapshot: EntityType<TEntity> | null,
   ) {
     this.snapshot = clone(snapshot);
   }
@@ -142,7 +143,7 @@ class DefaultActiveRecordDocument<
     return this;
   }
 
-  toJSON(): TDocument {
+  toJSON(): EntityType<TEntity> {
     return this.data;
   }
 }

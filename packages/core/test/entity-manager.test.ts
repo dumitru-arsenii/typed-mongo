@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
 import { createEntityManager, entityManager, getMongoConnection } from "../src";
+import type { ActiveRecordModel, BaseMongoEntity, Repository } from "../src";
 import {
   clearMongo,
   ProfileEntity,
@@ -20,6 +20,30 @@ describe("entity manager", () => {
 
   afterAll(async () => {
     await stopMongo();
+  });
+
+  it("supports entity definitions as repository and model type parameters", () => {
+    const repository: Repository<typeof UserEntity> = entityManager.repo(UserEntity);
+    const model: ActiveRecordModel<typeof UserEntity> =
+      entityManager.active(UserEntity);
+
+    expect(repository).toBeDefined();
+    expect(model).toBeDefined();
+  });
+
+  it("rejects unbranded entities as repository and model parameters", () => {
+    type UnbrandedEntity = Pick<
+      BaseMongoEntity,
+      "collection" | "schema" | "indexes" | "parse" | "safeParse"
+    >;
+
+    // @ts-expect-error Repository parameters must be branded Typed Mongo entities.
+    const repository: Repository<UnbrandedEntity> = entityManager.repo(UserEntity);
+    // @ts-expect-error ActiveRecordModel parameters must be branded Typed Mongo entities.
+    const model: ActiveRecordModel<UnbrandedEntity> = entityManager.active(UserEntity);
+
+    expect(repository).toBeDefined();
+    expect(model).toBeDefined();
   });
 
   it("creates repositories from the singleton connection", async () => {

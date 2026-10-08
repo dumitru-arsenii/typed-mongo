@@ -17,7 +17,7 @@ export class UsersModule {}
 export class UsersController {
   constructor(
     @InjectTypedMongoRepository("users")
-    private readonly users: TypedMongoRepository<UserDocument>,
+    private readonly users: TypedMongoRepository<typeof UserEntity>,
   ) {}
 }
 ```
