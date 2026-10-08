@@ -258,8 +258,10 @@ function getIdentityFields(schema: ZodTypeAny): string[] {
   }
 
   if (schema instanceof ZodDiscriminatedUnion) {
+    const options = schema.options as ZodObject<any>[];
+
     return [
-      ...new Set(schema.options.flatMap((option) => getObjectIdentityFields(option))),
+      ...new Set(options.flatMap((option) => getObjectIdentityFields(option))),
     ];
   }
 
