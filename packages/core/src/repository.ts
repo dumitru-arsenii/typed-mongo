@@ -8,7 +8,13 @@ import {
   type OptionalUnlessRequiredId,
   type UpdateFilter,
 } from "mongodb";
-import { ZodError, ZodObject, type TypeOf, type ZodTypeAny } from "zod";
+import {
+  ZodDiscriminatedUnion,
+  ZodError,
+  ZodObject,
+  type TypeOf,
+  type ZodTypeAny,
+} from "zod";
 
 import { TypedMongoValidationError } from "./errors";
 import type {
@@ -247,8 +253,20 @@ function parseEntity<TEntity extends MongoEntity<any>>(
 }
 
 function getIdentityFields(schema: ZodTypeAny): string[] {
-  if (!(schema instanceof ZodObject)) return [];
+  if (schema instanceof ZodObject) {
+    return getObjectIdentityFields(schema);
+  }
 
+  if (schema instanceof ZodDiscriminatedUnion) {
+    return [
+      ...new Set(schema.options.flatMap((option) => getObjectIdentityFields(option))),
+    ];
+  }
+
+  return [];
+}
+
+function getObjectIdentityFields(schema: ZodObject<any>): string[] {
   return Object.entries(schema.shape).flatMap(([key, fieldSchema]) =>
     isIdentitySchema(fieldSchema) ? [key] : [],
   );

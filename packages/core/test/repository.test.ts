@@ -1,8 +1,23 @@
 import { ObjectId } from "mongodb";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { z } from "zod";
 
-import { entityManager, syncIndexes, TypedMongoValidationError } from "../src";
+import {
+  createMongoEntity,
+  entityManager,
+  syncIndexes,
+  TypedMongoValidationError,
+} from "../src";
 import { clearMongo, startMongo, stopMongo, UserEntity } from "./helpers";
+import { identity } from "@typed-mongo/zod";
+
+const IdentityObjectEntity = createMongoEntity({
+  collection: "identity_objects",
+  schema: z.object({
+    id: identity(),
+    name: z.string(),
+  }),
+});
 
 describe("repository", () => {
   beforeAll(async () => {
@@ -57,6 +72,19 @@ describe("repository", () => {
     });
     await expect(repository.findById(user._id.toHexString())).resolves.toMatchObject({
       email: "john@example.com",
+    });
+  });
+
+  it("injects an identity field for a plain object document read from Mongo", async () => {
+    const repository = entityManager.repo(IdentityObjectEntity);
+    const _id = new ObjectId();
+
+    await repository.collection.insertOne({ _id, name: "Plain object" } as never);
+
+    await expect(repository.findOne({ _id } as never)).resolves.toMatchObject({
+      _id,
+      id: _id.toString(),
+      name: "Plain object",
     });
   });
 

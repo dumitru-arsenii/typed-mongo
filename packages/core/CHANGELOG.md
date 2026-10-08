@@ -1,5 +1,11 @@
 # @typed-mongo/core
 
+## 0.1.2
+
+### Patch Changes
+
+- Inject typed-mongo identity fields when parsing Zod discriminated-union entity documents.
+
 ## 0.1.1
 
 ### Patch Changes
