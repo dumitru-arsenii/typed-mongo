@@ -8,7 +8,6 @@ import { identity, timestamps } from "@typed-mongo/zod";
 
 const SectionArtifactSchema = z.object({
   kind: z.literal("section"),
-  id: identity(),
   pageId: mongoId(),
   sectionKey: z.string(),
   order: z.number(),
@@ -18,7 +17,6 @@ const SectionArtifactSchema = z.object({
 
 const SeoArtifactSchema = z.object({
   kind: z.literal("seo"),
-  id: identity(),
   pageId: mongoId(),
   title: z.string(),
   description: z.string().optional(),
@@ -36,6 +34,28 @@ const PageArtifactsEntity = createMongoEntity({
       },
     },
   ],
+});
+
+const IdentitySectionArtifactSchema = z.object({
+  kind: z.literal("section"),
+  id: identity(),
+  pageId: mongoId(),
+  sectionKey: z.string(),
+});
+
+const IdentitySeoArtifactSchema = z.object({
+  kind: z.literal("seo"),
+  id: identity(),
+  pageId: mongoId(),
+  title: z.string(),
+});
+
+const IdentityPageArtifactsEntity = createMongoEntity({
+  collection: "identity_page_artifacts",
+  schema: z.discriminatedUnion("kind", [
+    IdentitySectionArtifactSchema,
+    IdentitySeoArtifactSchema,
+  ]),
 });
 
 describe("zod discriminated union entities", () => {
@@ -91,7 +111,7 @@ describe("zod discriminated union entities", () => {
   });
 
   it("injects identity fields when reading discriminated-union documents", async () => {
-    const repository = entityManager.repo(PageArtifactsEntity);
+    const repository = entityManager.repo(IdentityPageArtifactsEntity);
     const _id = new ObjectId();
 
     await repository.collection.insertOne({
@@ -99,8 +119,6 @@ describe("zod discriminated union entities", () => {
       kind: "section",
       pageId: new ObjectId(),
       sectionKey: "hero",
-      order: 1,
-      props: {},
     } as never);
 
     await expect(repository.findOne({ _id } as never)).resolves.toMatchObject({
